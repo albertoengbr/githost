@@ -27,6 +27,7 @@ import (
 	"githost.dev/githost/internal/config"
 	"githost.dev/githost/internal/database"
 	"githost.dev/githost/internal/git"
+	"githost.dev/githost/internal/lock"
 	"githost.dev/githost/internal/logging"
 	"githost.dev/githost/migrations"
 )
@@ -52,6 +53,8 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		return runAdmin(ctx, rest, stdin, stdout, stderr)
 	case "repo":
 		return runRepo(ctx, rest, stdout, stderr)
+	case "backup":
+		return runBackup(ctx, rest, stdin, stdout, stderr)
 	case "help", "--help", "-h":
 		usage(stdout)
 		return 0
@@ -74,6 +77,7 @@ Commands:
   version   Print version information
   admin     Manage users, tokens and SSH keys (run "githost admin help")
   repo      Manage repositories (run "githost repo help")
+  backup    Backup and restore (run "githost backup help")
   help      Show this help
 
 Run "githost <command> --help" for command-specific flags.
@@ -284,6 +288,14 @@ func runDoctor(ctx context.Context, args []string, stdout, stderr io.Writer) int
 		results = append(results, checkResult{"http port", statusOK, addr + " available"})
 	} else {
 		results = append(results, checkResult{"http port", statusWarn, addr + " in use (is the server already running?)"})
+	}
+
+	// 7. Instance lock (is a server process running for this data dir?).
+	if probe, err := lock.Acquire(filepath.Join(cfg.Paths.Data, "githost.lock")); err != nil {
+		results = append(results, checkResult{"instance", statusOK, "running (lock held)"})
+	} else {
+		probe.Release()
+		results = append(results, checkResult{"instance", statusOK, "not running (backup can be taken)"})
 	}
 
 	for _, r := range results {

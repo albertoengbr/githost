@@ -22,6 +22,7 @@ import (
 	"githost.dev/githost/internal/database"
 	"githost.dev/githost/internal/git"
 	"githost.dev/githost/internal/httpserver"
+	"githost.dev/githost/internal/lock"
 	"githost.dev/githost/internal/permissions"
 	"githost.dev/githost/internal/ratelimit"
 	"githost.dev/githost/internal/reposervice"
@@ -84,13 +85,14 @@ func InstanceSecret(cfg *config.Config) (string, error) {
 }
 
 // Server is a running GitHost instance: HTTP listener, optional SSH
-// listener and one open database.
+// listener, one open database and the exclusive instance lock.
 type Server struct {
 	cfg    *config.Config
 	logger *slog.Logger
 	db     *sql.DB
 	http   *http.Server
 	ssh    *sshgit.Server
+	lock   *lock.Lock
 	addr   net.Addr
 }
 
@@ -99,17 +101,29 @@ type Server struct {
 // authorization) and starts the HTTP listener with the Git Smart HTTP
 // transport mounted. It returns once the server is accepting connections.
 // The caller stops it with Stop.
+//
+// Start holds the exclusive instance lock (internal/lock) for the
+// server's lifetime: a second `serve` fails fast, and backup/restore
+// refuse to touch a running instance.
 func Start(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*Server, error) {
 	if logger == nil {
 		logger = slog.Default()
 	}
+	instanceLock, err := lock.Acquire(filepath.Join(cfg.Paths.Data, "githost.lock"))
+	if err != nil {
+		return nil, err
+	}
+	releaseLock := func() { _ = instanceLock.Release() }
+
 	db, err := database.Open(ctx, cfg.Database.SQLite.Path)
 	if err != nil {
+		releaseLock()
 		return nil, err
 	}
 	ran, err := database.Migrate(ctx, db, migrations.FS)
 	if err != nil {
 		db.Close()
+		releaseLock()
 		return nil, err
 	}
 	if len(ran) > 0 {
@@ -121,11 +135,13 @@ func Start(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*Serve
 	executor, err := git.New(logger)
 	if err != nil {
 		db.Close()
+		releaseLock()
 		return nil, err
 	}
 	repoStorage, err := storage.NewRepositories(RepositoriesRoot(cfg), executor)
 	if err != nil {
 		db.Close()
+		releaseLock()
 		return nil, err
 	}
 	repos := reposervice.New(metadata, repoStorage)
@@ -136,6 +152,7 @@ func Start(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*Serve
 	secret, err := InstanceSecret(cfg)
 	if err != nil {
 		db.Close()
+		releaseLock()
 		return nil, err
 	}
 	sessions := session.New(metadata, 0)
@@ -178,12 +195,14 @@ func Start(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*Serve
 	})
 	if registerErr != nil {
 		db.Close()
+		releaseLock()
 		return nil, registerErr
 	}
 	addr := net.JoinHostPort(cfg.Server.Address, strconv.Itoa(cfg.Server.HTTPPort))
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		db.Close()
+		releaseLock()
 		return nil, fmt.Errorf("listen on %s: %w", addr, err)
 	}
 
@@ -196,6 +215,7 @@ func Start(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*Serve
 		logger: logger,
 		db:     db,
 		http:   httpSrv,
+		lock:   instanceLock,
 		addr:   ln.Addr(),
 	}
 
@@ -212,6 +232,7 @@ func Start(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*Serve
 		if err != nil {
 			db.Close()
 			ln.Close()
+			releaseLock()
 			return nil, err
 		}
 		sshAddr := net.JoinHostPort(cfg.Server.SSH.Address, strconv.Itoa(cfg.Server.SSH.Port))
@@ -219,6 +240,7 @@ func Start(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*Serve
 		if err != nil {
 			db.Close()
 			ln.Close()
+			releaseLock()
 			return nil, fmt.Errorf("ssh listen on %s: %w", sshAddr, err)
 		}
 		s.ssh = sshServer
@@ -254,7 +276,7 @@ func (s *Server) Config() *config.Config {
 }
 
 // Stop shuts down the HTTP server gracefully, stops accepting SSH
-// connections and closes the database.
+// connections, closes the database and releases the instance lock.
 func (s *Server) Stop(ctx context.Context) error {
 	var errs []error
 	if err := s.http.Shutdown(ctx); err != nil {
@@ -267,6 +289,11 @@ func (s *Server) Stop(ctx context.Context) error {
 	}
 	if err := s.db.Close(); err != nil {
 		errs = append(errs, fmt.Errorf("database close: %w", err))
+	}
+	if s.lock != nil {
+		if err := s.lock.Release(); err != nil {
+			errs = append(errs, fmt.Errorf("instance lock release: %w", err))
+		}
 	}
 	return errors.Join(errs...)
 }
