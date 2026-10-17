@@ -39,7 +39,8 @@ const DefaultTimeout = 10 * time.Minute
 var allowedSubcommands = map[string]bool{
 	"cat-file":         true,
 	"check-ref-format": true,
-	"config":           true, // constant keys only — never user-supplied keys
+	"commit-tree":      true,
+	"config":           true, // constant keys only - never user-supplied keys
 	"count-objects":    true,
 	"diff-tree":        true,
 	"for-each-ref":     true,
@@ -47,9 +48,12 @@ var allowedSubcommands = map[string]bool{
 	"init":             true,
 	"log":              true,
 	"ls-tree":          true,
+	"merge-base":       true,
+	"merge-tree":       true,
 	"receive-pack":     true,
 	"rev-parse":        true,
 	"symbolic-ref":     true,
+	"update-ref":       true,
 	"upload-pack":      true,
 	"version":          true,
 }
@@ -65,10 +69,10 @@ var gitProtocolValue = regexp.MustCompile(`^version=[0-9]+$`)
 
 // gitConfigEntry validates "key=value" pairs passed as `git -c` settings.
 // Keys are dot-separated identifiers (git config keys are
-// case-insensitive; camelCase like receive.maxInputSize is canonical)
-// and values are conservative (sizes, booleans, simple tokens) —
-// nothing shell-like ever reaches git.
-var gitConfigEntry = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9]*(\.[a-zA-Z][a-zA-Z0-9]*)+=[A-Za-z0-9._:+-]{1,64}$`)
+// case-insensitive; camelCase like receive.maxInputSize is canonical).
+// Values allow printable ASCII including spaces, '@' and ':' (email
+// addresses, commit messages fragments) — argv passes them safely.
+var gitConfigEntry = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9]*(\.[a-zA-Z][a-zA-Z0-9]*)+=[!-~]{1,128}$`)
 
 // Executor runs the official git binary under strict constraints.
 type Executor struct {

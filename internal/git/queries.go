@@ -168,8 +168,13 @@ func (e *Executor) Log(ctx context.Context, dir, rev string, skip, limit int) ([
 	if err != nil {
 		return nil, err
 	}
+	return parseLogOutput(string(res.Stdout)), nil
+}
+
+// parseLogOutput splits the unit-separated log format into commits.
+func parseLogOutput(stdout string) []Commit {
 	var commits []Commit
-	for _, record := range strings.Split(strings.TrimRight(string(res.Stdout), "\x1e"), "\x1e") {
+	for _, record := range strings.Split(strings.TrimRight(stdout, "\x1e"), "\x1e") {
 		record = strings.TrimLeft(record, "\n") // git's record separator is followed by \n
 		if record == "" {
 			continue
@@ -196,7 +201,7 @@ func (e *Executor) Log(ctx context.Context, dir, rev string, skip, limit int) ([
 			Body:           strings.TrimRight(fields[10], "\n"),
 		})
 	}
-	return commits, nil
+	return commits
 }
 
 // Commit returns a single commit by hash.
