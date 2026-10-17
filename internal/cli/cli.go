@@ -15,12 +15,10 @@ import (
 	"io/fs"
 	"net"
 	"os"
-	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"runtime"
 	"strconv"
-	"strings"
 	"syscall"
 	"time"
 
@@ -28,6 +26,7 @@ import (
 	"githost.dev/githost/internal/buildinfo"
 	"githost.dev/githost/internal/config"
 	"githost.dev/githost/internal/database"
+	"githost.dev/githost/internal/git"
 	"githost.dev/githost/internal/logging"
 	"githost.dev/githost/migrations"
 )
@@ -234,10 +233,12 @@ func runDoctor(ctx context.Context, args []string, stdout, stderr io.Writer) int
 	}
 
 	// 4. Git executable (required from F1 for repository operations).
-	if ver, err := gitVersion(); err != nil {
+	if executor, err := git.New(nil); err != nil {
 		results = append(results, checkResult{"git", statusWarn, err.Error()})
-	} else if !gitVersionAtLeast(ver, 2, 30) {
-		results = append(results, checkResult{"git", statusWarn, "version " + ver + " is older than the recommended 2.30"})
+	} else if ver, err := executor.Version(ctx); err != nil {
+		results = append(results, checkResult{"git", statusWarn, err.Error()})
+	} else if !git.AtLeast(ver, 2, 30) {
+		results = append(results, checkResult{"git", statusWarn, "version " + ver + " is older than the supported 2.30"})
 	} else {
 		results = append(results, checkResult{"git", statusOK, ver})
 	}
@@ -294,40 +295,4 @@ func countEmbeddedMigrations() int {
 		return -1
 	}
 	return len(migs)
-}
-
-// gitVersion returns the installed Git version as reported by `git --version`.
-func gitVersion() (string, error) {
-	path, err := exec.LookPath("git")
-	if err != nil {
-		return "", errors.New("git executable not found (required from F1)")
-	}
-	out, err := exec.Command(path, "--version").Output()
-	if err != nil {
-		return "", fmt.Errorf("run git --version: %w", err)
-	}
-	// "git version 2.56.0.windows.1" -> "2.56.0.windows.1"
-	fields := strings.Fields(strings.TrimSpace(string(out)))
-	if len(fields) < 3 {
-		return "", fmt.Errorf("unexpected git --version output: %q", strings.TrimSpace(string(out)))
-	}
-	return fields[2], nil
-}
-
-// gitVersionAtLeast reports whether a "git --version" version string is at
-// least major.minor. Non-numeric suffixes (e.g. ".windows.1") are ignored.
-func gitVersionAtLeast(ver string, major, minor int) bool {
-	parts := strings.Split(ver, ".")
-	if len(parts) < 2 {
-		return false
-	}
-	maj, err := strconv.Atoi(parts[0])
-	if err != nil {
-		return false
-	}
-	min, err := strconv.Atoi(parts[1])
-	if err != nil {
-		return false
-	}
-	return maj > major || (maj == major && min >= minor)
 }
