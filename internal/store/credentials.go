@@ -223,3 +223,86 @@ func (s *Store) Audit(ctx context.Context, actorID *int64, action, target, detai
 	}
 	return nil
 }
+
+// ----------------------------------------------------------------- sessions
+
+// Session is a web login session. The cookie carries a random token; only
+// its SHA-256 hash (ID) is stored.
+type Session struct {
+	ID        string // sha256 hex of the cookie token
+	UserID    int64
+	ExpiresAt time.Time
+	CreatedAt time.Time
+	IP        string
+	UserAgent string
+}
+
+// SessionUser is the result of resolving a session: both the session row
+// and the logged-in user.
+type SessionUser struct {
+	Session Session
+	User    User
+}
+
+// CreateSession records a login session. The caller keeps the plaintext
+// token (cookie) and passes its hash as id.
+func (s *Store) CreateSession(ctx context.Context, id string, userID int64, expiresAt time.Time, ip, userAgent string) error {
+	_, err := s.db.ExecContext(ctx,
+		"INSERT INTO sessions (id, user_id, expires_at, created_at, ip, user_agent) VALUES (?, ?, ?, ?, ?, ?)",
+		id, userID, expiresAt.UTC().Format(time.RFC3339), nowUTC(), ip, userAgent)
+	if err != nil {
+		return fmt.Errorf("create session: %w", err)
+	}
+	return nil
+}
+
+// SessionByHash resolves a session token hash, joining the user and
+// enforcing expiry.
+func (s *Store) SessionByHash(ctx context.Context, id string) (*SessionUser, error) {
+	row := s.db.QueryRowContext(ctx,
+		`SELECT s.id, s.user_id, s.expires_at, s.created_at, s.ip, s.user_agent,
+		        u.id, u.username, u.email, u.password_hash, u.is_admin, u.created_at, u.updated_at
+		 FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.id = ?`, id)
+	var su SessionUser
+	var sExpires, sCreated, uCreated, uUpdated string
+	var isAdmin int
+	err := row.Scan(&su.Session.ID, &su.Session.UserID, &sExpires, &sCreated, &su.Session.IP, &su.Session.UserAgent,
+		&su.User.ID, &su.User.Username, &su.User.Email, &su.User.PasswordHash, &isAdmin, &uCreated, &uUpdated)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	su.User.IsAdmin = isAdmin != 0
+	su.Session.ExpiresAt = parseTime(sExpires)
+	su.Session.CreatedAt = parseTime(sCreated)
+	su.User.CreatedAt = parseTime(uCreated)
+	su.User.UpdatedAt = parseTime(uUpdated)
+	if su.Session.ExpiresAt.Before(time.Now()) {
+		return nil, ErrNotFound
+	}
+	return &su, nil
+}
+
+// DeleteSession removes one session (logout).
+func (s *Store) DeleteSession(ctx context.Context, id string) error {
+	_, err := s.db.ExecContext(ctx, "DELETE FROM sessions WHERE id = ?", id)
+	return err
+}
+
+// DeleteUserSessions removes all sessions of a user (password change etc.).
+func (s *Store) DeleteUserSessions(ctx context.Context, userID int64) error {
+	_, err := s.db.ExecContext(ctx, "DELETE FROM sessions WHERE user_id = ?", userID)
+	return err
+}
+
+// PruneSessions removes expired sessions; returns rows removed.
+func (s *Store) PruneSessions(ctx context.Context) (int64, error) {
+	res, err := s.db.ExecContext(ctx,
+		"DELETE FROM sessions WHERE expires_at < ?", nowUTC())
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
