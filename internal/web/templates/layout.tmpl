@@ -1,0 +1,35 @@
+{{define "layout"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GitHost{{if .Title}} · {{.Title}}{{end}}</title>
+<link rel="stylesheet" href="/static/css/githost.css">
+</head>
+<body>
+<header class="topbar">
+  <nav class="topbar-inner">
+    <a class="brand" href="/">GitHost</a>
+    <div class="topbar-links">
+      {{if .Username}}
+        <a href="/new">New repository</a>
+        <a href="/settings/keys">SSH keys</a>
+        <a href="/settings/tokens">Tokens</a>
+        <span class="whoami">{{.Username}}</span>
+        <form method="post" action="/logout" class="inline-form">
+          <input type="hidden" name="csrf" value="{{.CSRF}}">
+          <button type="submit" class="linklike">Log out</button>
+        </form>
+      {{else}}
+        <a href="/login">Log in</a>
+      {{end}}
+    </div>
+  </nav>
+</header>
+<main class="content">
+  {{if .Flash}}<div class="flash flash-{{.FlashKind}}">{{.Flash}}</div>{{end}}
+  {{template "content" .}}
+</main>
+<footer class="footer">GitHost — a lightweight self-hosted Git platform</footer>
+</body>
+</html>{{end}}

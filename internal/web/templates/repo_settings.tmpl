@@ -1,0 +1,55 @@
+{{define "content"}}
+{{$owner := .Repo.Owner}}{{$name := .Repo.Name}}
+<div class="repo-head">
+  <h1><a href="/{{$owner}}">{{$owner}}</a> / <a href="/{{$owner}}/{{$name}}">{{$name}}</a>
+    {{if eq .Repo.Visibility "private"}}<span class="badge badge-private">private</span>{{end}}
+  </h1>
+</div>
+<nav class="tabs">
+  <a class="tab" href="/{{$owner}}/{{$name}}">Code</a>
+  <a class="tab" href="/{{$owner}}/{{$name}}/commits">Commits</a>
+  <a class="tab" href="/{{$owner}}/{{$name}}/branches">Branches</a>
+  <a class="tab" href="/{{$owner}}/{{$name}}/tags">Tags</a>
+  <span class="tab active">Settings</span>
+</nav>
+
+<div class="card">
+  <h2>Repository settings</h2>
+  <form method="post" action="/{{$owner}}/{{$name}}/settings">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <label>Description <input name="description" value="{{.Repo.Description}}"></label>
+    <fieldset>
+      <legend>Visibility</legend>
+      <label class="radio"><input type="radio" name="visibility" value="private"
+        {{if eq .Repo.Visibility "private"}}checked{{end}}> Private</label>
+      <label class="radio"><input type="radio" name="visibility" value="public"
+        {{if eq .Repo.Visibility "public"}}checked{{end}}> Public</label>
+    </fieldset>
+    <label>Default branch
+      <select name="default_branch">
+        {{$current := .Repo.DefaultBranch}}
+        {{range .Branches}}
+        <option value="{{.Short}}" {{if eq .Short $current}}selected{{end}}>{{.Short}}</option>
+        {{end}}
+      </select>
+    </label>
+    <label class="checkbox"><input type="checkbox" name="archived" value="1"
+      {{if .Repo.IsArchived}}checked{{end}}> Archived (rejects pushes, keeps reads)</label>
+    <label>Rename
+      <input name="new_name" value="{{.Repo.Name}}" pattern="[A-Za-z0-9][A-Za-z0-9._-]*">
+    </label>
+    <button type="submit">Save settings</button>
+  </form>
+</div>
+
+<div class="card danger-zone">
+  <h2>Danger zone</h2>
+  <p>Deleting removes the repository and all of its data permanently.</p>
+  <form method="post" action="/{{$owner}}/{{$name}}/delete">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <label class="checkbox"><input type="checkbox" name="confirm" value="yes" required>
+      I understand this deletes {{$owner}}/{{$name}} permanently</label>
+    <button type="submit" class="danger">Delete repository</button>
+  </form>
+</div>
+{{end}}

@@ -1,0 +1,17 @@
+{{define "content"}}
+<div class="card narrow">
+  <h1>Log in</h1>
+  <p>Sign in with your GitHost account. Public sign-up is disabled; ask
+  the operator for an account.</p>
+  <form method="post" action="/login">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <label>Username
+      <input name="username" autocomplete="username" required autofocus>
+    </label>
+    <label>Password
+      <input type="password" name="password" autocomplete="current-password" required>
+    </label>
+    <button type="submit">Log in</button>
+  </form>
+</div>
+{{end}}

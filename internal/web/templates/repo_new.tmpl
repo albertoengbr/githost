@@ -1,0 +1,26 @@
+{{define "content"}}
+<div class="card narrow">
+  <h1>New repository</h1>
+  {{if .FormError}}<div class="flash flash-err">{{.FormError}}</div>{{end}}
+  <form method="post" action="/new">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <label>Owner
+      <select name="owner" required>
+        <option value="{{.Username}}">{{.Username}}</option>
+      </select>
+    </label>
+    <label>Name
+      <input name="name" pattern="[A-Za-z0-9][A-Za-z0-9._-]*" required
+             title="Letters, digits, '.', '_' and '-'; alphanumeric first and last">
+    </label>
+    <label>Description <input name="description"></label>
+    <fieldset>
+      <legend>Visibility</legend>
+      <label class="radio"><input type="radio" name="visibility" value="private" checked> Private — only you and members</label>
+      <label class="radio"><input type="radio" name="visibility" value="public"> Public — anyone can read</label>
+    </fieldset>
+    <label>Default branch <input name="default_branch" value="main"></label>
+    <button type="submit">Create repository</button>
+  </form>
+</div>
+{{end}}

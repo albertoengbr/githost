@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"net"
 	"net/http"
@@ -16,16 +17,20 @@ import (
 	"time"
 
 	"githost.dev/githost/internal/config"
+	"githost.dev/githost/internal/csrf"
 	"githost.dev/githost/internal/database"
 	"githost.dev/githost/internal/git"
 	"githost.dev/githost/internal/httpserver"
 	"githost.dev/githost/internal/permissions"
+	"githost.dev/githost/internal/ratelimit"
 	"githost.dev/githost/internal/reposervice"
 	"githost.dev/githost/internal/security"
+	"githost.dev/githost/internal/session"
 	"githost.dev/githost/internal/storage"
 	"githost.dev/githost/internal/store"
 	"githost.dev/githost/internal/transport/httpgit"
 	"githost.dev/githost/internal/transport/sshgit"
+	"githost.dev/githost/internal/web"
 	"githost.dev/githost/migrations"
 )
 
@@ -58,6 +63,23 @@ func Init(ctx context.Context, cfg *config.Config) error {
 // RepositoriesRoot returns the on-disk root for bare repositories.
 func RepositoriesRoot(cfg *config.Config) string {
 	return filepath.Join(cfg.Paths.Data, "repositories")
+}
+
+// InstanceSecret loads the instance secret, creating it on first use
+// (start before init is an operator mistake we tolerate once, not a
+// state we want the server to run in forever).
+func InstanceSecret(cfg *config.Config) (string, error) {
+	secret, err := security.LoadSecretFile(cfg.Security.SecretFile)
+	if err == nil {
+		return secret, nil
+	}
+	if !errors.Is(err, fs.ErrNotExist) {
+		return "", err
+	}
+	if err := security.WriteSecretFile(cfg.Security.SecretFile); err != nil {
+		return "", err
+	}
+	return security.LoadSecretFile(cfg.Security.SecretFile)
 }
 
 // Server is a running GitHost instance: HTTP listener, optional SSH
@@ -108,10 +130,35 @@ func Start(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*Serve
 	repos := reposervice.New(metadata, repoStorage)
 	perms := permissions.New(metadata)
 
+	// F2: web interface prerequisites. The instance secret signs CSRF
+	// tokens; login throttling is per-process (single-instance design).
+	secret, err := InstanceSecret(cfg)
+	if err != nil {
+		db.Close()
+		return nil, err
+	}
+	sessions := session.New(metadata, 0)
+	csrfManager := csrf.New(secret)
+	loginLimiter := ratelimit.New(5, 15*time.Minute)
+
+	var registerErr error
 	handler := httpserver.New(httpserver.Options{
 		DB:     db,
 		Logger: logger,
 		RegisterRoutes: func(mux *http.ServeMux) {
+			if _, err := web.Register(mux, web.Deps{
+				Store:    metadata,
+				Sessions: sessions,
+				CSRF:     csrfManager,
+				Perms:    perms,
+				Repos:    repos,
+				Git:      executor,
+				Limiter:  loginLimiter,
+				Logger:   logger,
+			}); err != nil {
+				registerErr = err
+				return
+			}
 			httpgit.Register(mux, httpgit.Deps{
 				Store:  metadata,
 				Perms:  perms,
@@ -121,6 +168,10 @@ func Start(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*Serve
 			})
 		},
 	})
+	if registerErr != nil {
+		db.Close()
+		return nil, registerErr
+	}
 	addr := net.JoinHostPort(cfg.Server.Address, strconv.Itoa(cfg.Server.HTTPPort))
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {

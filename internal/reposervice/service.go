@@ -64,6 +64,11 @@ func (s *Service) Create(ctx context.Context, owner *store.User, name string, op
 	if err != nil {
 		return nil, err
 	}
+	// Friendly duplicate detection; the DB unique constraint remains the
+	// authority (races are not possible: single process + single writer).
+	if _, err := s.store.RepositoryByOwnerAndName(ctx, owner.Username, name); err == nil {
+		return nil, fmt.Errorf("repository name %q is already in use", name)
+	}
 	repo, err := s.store.CreateRepository(ctx, owner.ID, uuid, name, opts.Description, visibility, branch)
 	if err != nil {
 		return nil, err

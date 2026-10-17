@@ -1,0 +1,62 @@
+{{define "content"}}
+{{$owner := .Repo.Owner}}{{$name := .Repo.Name}}
+<div class="repo-head">
+  <h1><a href="/{{$owner}}">{{$owner}}</a> / <a href="/{{$owner}}/{{$name}}">{{$name}}</a>
+    {{if eq .Repo.Visibility "private"}}<span class="badge badge-private">private</span>
+    {{else}}<span class="badge badge-public">public</span>{{end}}
+    {{if .Repo.IsArchived}}<span class="badge badge-archived">archived</span>{{end}}
+  </h1>
+</div>
+<nav class="tabs">
+  <span class="tab active">Code</span>
+  <a class="tab" href="/{{$owner}}/{{$name}}/commits">Commits</a>
+  <a class="tab" href="/{{$owner}}/{{$name}}/branches">Branches</a>
+  <a class="tab" href="/{{$owner}}/{{$name}}/tags">Tags</a>
+  {{if .CanManage}}<a class="tab" href="/{{$owner}}/{{$name}}/settings">Settings</a>{{end}}
+</nav>
+
+{{if not .HasCommits}}
+<div class="card">
+  <h2>Empty repository</h2>
+  <p>Push your first commit, then refresh this page.</p>
+  <pre class="code">git clone {{.CloneHTTP}}
+cd {{$name}}
+echo "# {{$name}}" > README.md
+git add README.md
+git commit -m "initial commit"
+git push origin {{.Repo.DefaultBranch}}</pre>
+</div>
+{{else}}
+<div class="latest-commit">
+  <strong>{{.Latest.Subject}}</strong>
+  <span class="muted">{{.Latest.AuthorName}} committed {{timeago .Latest.AuthorTime}}</span>
+  <a class="muted" href="/{{$owner}}/{{$name}}/commit/{{.Latest.Hash}}">{{printf "%.10s" .Latest.Hash}}</a>
+</div>
+
+<div class="columns">
+  <section class="file-tree card">
+    <div class="tree-path">{{if .Path}}<a href="/{{$owner}}/{{$name}}/tree?ref={{.Ref}}">root</a> / {{.Path}}{{else}}root{{end}}</div>
+    {{range .Entries}}
+    <div class="tree-row">
+      {{if eq .Type "tree"}}
+        <a href="/{{$owner}}/{{$name}}/tree/{{.Name}}{{if $.Path}}/{{$.Path}}{{end}}?ref={{$.Ref}}">📁 {{.Name}}</a>
+      {{else if eq .Type "commit"}}
+        <span>🔗 {{.Name}} <span class="muted">(submodule)</span></span>
+      {{else}}
+        <a href="/{{$owner}}/{{$name}}/blob/{{if $.Path}}{{$.Path}}/{{end}}{{.Name}}?ref={{$.Ref}}">📄 {{.Name}}</a>
+      {{end}}
+      <span class="muted">{{bytes .Size}}</span>
+    </div>
+    {{end}}
+  </section>
+  <section class="readme card">
+    {{if .Readme}}
+    <h2>{{.ReadmeName}}</h2>
+    <pre class="code">{{.Readme}}</pre>
+    {{else}}
+    <p class="muted">No README in this directory.</p>
+    {{end}}
+  </section>
+</div>
+{{end}}
+{{end}}

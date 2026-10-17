@@ -1,0 +1,31 @@
+{{define "content"}}
+{{$owner := .Repo.Owner}}{{$name := .Repo.Name}}
+<div class="repo-head">
+  <h1><a href="/{{$owner}}">{{$owner}}</a> / <a href="/{{$owner}}/{{$name}}">{{$name}}</a>
+    {{if eq .Repo.Visibility "private"}}<span class="badge badge-private">private</span>{{end}}
+  </h1>
+</div>
+<nav class="tabs">
+  <a class="tab" href="/{{$owner}}/{{$name}}">Code</a>
+  <a class="tab" href="/{{$owner}}/{{$name}}/commits">Commits</a>
+  <a class="tab" href="/{{$owner}}/{{$name}}/branches">Branches</a>
+  <span class="tab active">Tags</span>
+  {{if .CanManage}}<a class="tab" href="/{{$owner}}/{{$name}}/settings">Settings</a>{{end}}
+</nav>
+
+<h2>Tags</h2>
+{{if .Tags}}
+<ul class="ref-list">
+  {{range .Tags}}
+  <li class="ref-item">
+    <div>
+      <a class="ref-name" href="/{{$owner}}/{{$name}}/commits?ref={{.Short}}">{{.Short}}</a>
+      <p class="muted">{{.Subject}} · {{timeago .When}}</p>
+    </div>
+  </li>
+  {{end}}
+</ul>
+{{else}}
+<p class="muted">No tags.</p>
+{{end}}
+{{end}}

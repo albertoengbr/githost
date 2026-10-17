@@ -1,0 +1,39 @@
+{{define "content"}}
+{{$owner := .Repo.Owner}}{{$name := .Repo.Name}}
+<div class="repo-head">
+  <h1><a href="/{{$owner}}">{{$owner}}</a> / <a href="/{{$owner}}/{{$name}}">{{$name}}</a>
+    {{if eq .Repo.Visibility "private"}}<span class="badge badge-private">private</span>{{end}}
+  </h1>
+</div>
+<nav class="tabs">
+  <a class="tab" href="/{{$owner}}/{{$name}}">Code</a>
+  <span class="tab active">Commits</span>
+  <a class="tab" href="/{{$owner}}/{{$name}}/branches">Branches</a>
+  <a class="tab" href="/{{$owner}}/{{$name}}/tags">Tags</a>
+  {{if .CanManage}}<a class="tab" href="/{{$owner}}/{{$name}}/settings">Settings</a>{{end}}
+</nav>
+
+<div class="page-head">
+  <h2>Commits on <code>{{.Ref}}</code></h2>
+</div>
+{{if .Commits}}
+<ul class="commit-list">
+  {{range .Commits}}
+  <li class="commit-item">
+    <div>
+      <a class="commit-subject" href="/{{$owner}}/{{$name}}/commit/{{.Hash}}">{{.Subject}}</a>
+      {{if .IsMerge}}<span class="badge badge-merge">merge</span>{{end}}
+      <p class="muted">{{.AuthorName}} <{{.AuthorEmail}}> · {{timeago .AuthorTime}}</p>
+    </div>
+    <a class="muted mono" href="/{{$owner}}/{{$name}}/commit/{{.Hash}}">{{printf "%.10s" .Hash}}</a>
+  </li>
+  {{end}}
+</ul>
+<div class="pager">
+  {{if gt .Page 1}}<a href="?ref={{.Ref}}&page={{Sub .Page 1}}">Newer</a>{{end}}
+  {{if .HasMore}}<a href="?ref={{.Ref}}&page={{Add .Page 1}}">Older</a>{{end}}
+</div>
+{{else}}
+<p class="muted">No commits on this ref.</p>
+{{end}}
+{{end}}

@@ -1,0 +1,29 @@
+{{define "content"}}
+{{$owner := .Repo.Owner}}{{$name := .Repo.Name}}
+<div class="repo-head">
+  <h1><a href="/{{$owner}}">{{$owner}}</a> / <a href="/{{$owner}}/{{$name}}">{{$name}}</a>
+    {{if eq .Repo.Visibility "private"}}<span class="badge badge-private">private</span>{{end}}
+  </h1>
+</div>
+<nav class="tabs">
+  <span class="tab active">Code</span>
+  <a class="tab" href="/{{$owner}}/{{$name}}/commits">Commits</a>
+  <a class="tab" href="/{{$owner}}/{{$name}}/branches">Branches</a>
+  <a class="tab" href="/{{$owner}}/{{$name}}/tags">Tags</a>
+  {{if .CanManage}}<a class="tab" href="/{{$owner}}/{{$name}}/settings">Settings</a>{{end}}
+</nav>
+
+<section class="card">
+  <div class="tree-path">
+    <code>{{.Path}}</code> · <a href="/{{$owner}}/{{$name}}/tree?ref={{.Ref}}">back to root</a>
+    · <a href="/{{$owner}}/{{$name}}/raw/{{.Path}}?ref={{.Ref}}">raw</a>
+  </div>
+  {{if .Binary}}
+    <p class="muted">Binary file ({{bytes .Size}}). Use the raw link to download it.</p>
+  {{else if .Truncated}}
+    <p class="muted">File is {{bytes .Size}} and too large to preview. Use the raw link to view it fully.</p>
+  {{else}}
+  <pre class="code">{{.Content}}</pre>
+  {{end}}
+</section>
+{{end}}

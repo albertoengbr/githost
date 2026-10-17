@@ -1,0 +1,24 @@
+{{define "content"}}
+<div class="page-head">
+  <h1>Repositories</h1>
+  {{if .Username}}<a class="button" href="/new">New repository</a>{{end}}
+</div>
+{{if .Repos}}
+<ul class="repo-list">
+  {{range .Repos}}
+  <li class="repo-item">
+    <div>
+      <a class="repo-name" href="/{{.Owner}}/{{.Name}}">{{.Owner}} / {{.Name}}</a>
+      {{if eq .Visibility "private"}}<span class="badge badge-private">private</span>
+      {{else}}<span class="badge badge-public">public</span>{{end}}
+      {{if .IsArchived}}<span class="badge badge-archived">archived</span>{{end}}
+      {{if .Description}}<p class="repo-desc">{{.Description}}</p>{{end}}
+    </div>
+    <span class="repo-meta">updated {{timeago .UpdatedAt}}</span>
+  </li>
+  {{end}}
+</ul>
+{{else}}
+<p class="muted">No repositories yet.</p>
+{{end}}
+{{end}}

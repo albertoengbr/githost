@@ -119,8 +119,33 @@ func (s *Store) RepositoriesByOwner(ctx context.Context, ownerID int64) ([]*Repo
 
 // AllRepositories lists every repository (admin listing).
 func (s *Store) AllRepositories(ctx context.Context) ([]*Repository, error) {
-	rows, err := s.db.QueryContext(ctx,
-		"SELECT "+repositoryColumns+" FROM repositories r JOIN users u ON u.id = r.owner_id ORDER BY r.owner_id, r.name")
+	return s.queryRepositories(ctx,
+		"SELECT "+repositoryColumns+
+			" FROM repositories r JOIN users u ON u.id = r.owner_id ORDER BY r.owner_id, r.name")
+}
+
+// RepositoriesVisibleTo lists repositories the viewer may read: public
+// repositories plus the viewer's own and their memberships. Anonymous
+// viewers see public repositories only.
+func (s *Store) RepositoriesVisibleTo(ctx context.Context, user *User) ([]*Repository, error) {
+	if user == nil {
+		return s.queryRepositories(ctx,
+			"SELECT "+repositoryColumns+
+				" FROM repositories r JOIN users u ON u.id = r.owner_id"+
+				" WHERE r.visibility = 'public' ORDER BY r.updated_at DESC")
+	}
+	return s.queryRepositories(ctx,
+		"SELECT "+repositoryColumns+
+			" FROM repositories r JOIN users u ON u.id = r.owner_id"+
+			" WHERE r.visibility = 'public' OR r.owner_id = ?"+
+			"    OR EXISTS (SELECT 1 FROM repository_members m WHERE m.repository_id = r.id AND m.user_id = ?)"+
+			" ORDER BY r.updated_at DESC",
+		user.ID, user.ID)
+}
+
+// queryRepositories runs a repository listing query and scans rows.
+func (s *Store) queryRepositories(ctx context.Context, query string, args ...any) ([]*Repository, error) {
+	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}

@@ -1,0 +1,36 @@
+{{define "content"}}
+{{$owner := .Repo.Owner}}{{$name := .Repo.Name}}
+<div class="repo-head">
+  <h1><a href="/{{$owner}}">{{$owner}}</a> / <a href="/{{$owner}}/{{$name}}">{{$name}}</a>
+    {{if eq .Repo.Visibility "private"}}<span class="badge badge-private">private</span>{{end}}
+  </h1>
+</div>
+<nav class="tabs">
+  <span class="tab active">Code</span>
+  <a class="tab" href="/{{$owner}}/{{$name}}/commits">Commits</a>
+  <a class="tab" href="/{{$owner}}/{{$name}}/branches">Branches</a>
+  <a class="tab" href="/{{$owner}}/{{$name}}/tags">Tags</a>
+  {{if .CanManage}}<a class="tab" href="/{{$owner}}/{{$name}}/settings">Settings</a>{{end}}
+</nav>
+
+<section class="card">
+  <div class="tree-path">branch <code>{{.Ref}}</code> · {{if .Path}}<a href="/{{$owner}}/{{$name}}/tree?ref={{.Ref}}">root</a> / {{.Path}}{{else}}root{{end}}</div>
+  {{if .Entries}}
+  <div class="tree-row tree-head"><span>Name</span><span class="muted">Size</span></div>
+  {{range .Entries}}
+  <div class="tree-row">
+    {{if eq .Type "tree"}}
+      <a href="/{{$owner}}/{{$name}}/tree/{{.Name}}{{if $.Path}}/{{$.Path}}{{end}}?ref={{$.Ref}}">📁 {{.Name}}</a>
+    {{else if eq .Type "commit"}}
+      <span>🔗 {{.Name}} <span class="muted">(submodule)</span></span>
+    {{else}}
+      <a href="/{{$owner}}/{{$name}}/blob/{{if $.Path}}{{$.Path}}/{{end}}{{.Name}}?ref={{$.Ref}}">📄 {{.Name}}</a>
+    {{end}}
+    <span class="muted">{{bytes .Size}}</span>
+  </div>
+  {{end}}
+  {{else}}
+  <p class="muted">Empty directory or unknown ref.</p>
+  {{end}}
+</section>
+{{end}}
