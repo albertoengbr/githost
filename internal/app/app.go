@@ -17,8 +17,14 @@ import (
 
 	"githost.dev/githost/internal/config"
 	"githost.dev/githost/internal/database"
+	"githost.dev/githost/internal/git"
 	"githost.dev/githost/internal/httpserver"
+	"githost.dev/githost/internal/permissions"
+	"githost.dev/githost/internal/reposervice"
 	"githost.dev/githost/internal/security"
+	"githost.dev/githost/internal/storage"
+	"githost.dev/githost/internal/store"
+	"githost.dev/githost/internal/transport/httpgit"
 	"githost.dev/githost/migrations"
 )
 
@@ -62,9 +68,11 @@ type Server struct {
 	addr   net.Addr
 }
 
-// Start opens the database, applies pending migrations (idempotent) and
-// starts the HTTP listener. It returns once the server is accepting
-// connections. The caller stops it with Stop.
+// Start opens the database, applies pending migrations (idempotent),
+// wires the service graph (store, git executor, repository storage,
+// authorization) and starts the HTTP listener with the Git Smart HTTP
+// transport mounted. It returns once the server is accepting connections.
+// The caller stops it with Stop.
 func Start(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*Server, error) {
 	if logger == nil {
 		logger = slog.Default()
@@ -82,7 +90,34 @@ func Start(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*Serve
 		logger.Info("migrations_applied", "count", len(ran), "versions", fmt.Sprintf("%v", ran))
 	}
 
-	handler := httpserver.New(httpserver.Options{DB: db, Logger: logger})
+	// F1 service graph.
+	metadata := store.New(db)
+	executor, err := git.New(logger)
+	if err != nil {
+		db.Close()
+		return nil, err
+	}
+	repoStorage, err := storage.NewRepositories(RepositoriesRoot(cfg), executor)
+	if err != nil {
+		db.Close()
+		return nil, err
+	}
+	repos := reposervice.New(metadata, repoStorage)
+	perms := permissions.New(metadata)
+
+	handler := httpserver.New(httpserver.Options{
+		DB:     db,
+		Logger: logger,
+		RegisterRoutes: func(mux *http.ServeMux) {
+			httpgit.Register(mux, httpgit.Deps{
+				Store:  metadata,
+				Perms:  perms,
+				Repos:  repos,
+				Git:    executor,
+				Logger: logger,
+			})
+		},
+	})
 	addr := net.JoinHostPort(cfg.Server.Address, strconv.Itoa(cfg.Server.HTTPPort))
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
@@ -91,7 +126,7 @@ func Start(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*Serve
 	}
 
 	httpSrv := &http.Server{
-		Handler:           handler.Handler(),
+		Handler:           httpgit.Guard(handler.Handler()),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	s := &Server{

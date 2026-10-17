@@ -21,6 +21,9 @@ type Options struct {
 	// tests that only exercise /version.
 	DB     *sql.DB
 	Logger *slog.Logger
+	// RegisterRoutes, when set, installs additional routes (used by the
+	// app layer to mount the Git Smart HTTP transport).
+	RegisterRoutes func(mux *http.ServeMux)
 }
 
 // Server serves the GitHost HTTP surface.
@@ -42,6 +45,9 @@ func New(opts Options) *Server {
 	}
 	s.mux.HandleFunc("GET /healthz", s.handleHealthz)
 	s.mux.HandleFunc("GET /version", s.handleVersion)
+	if opts.RegisterRoutes != nil {
+		opts.RegisterRoutes(s.mux)
+	}
 	return s
 }
 
