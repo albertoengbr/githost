@@ -46,11 +46,22 @@ HTTPS and SSH, commits pushed and pulled, history byte-intact, every
 authorization boundary verified by negative tests, live binary demo
 over both transports.
 
-## F2 — Web UI + API (SPECIFIED, high level)
+## F2 — Web UI + API (ACCEPTED)
 
-Dashboard, repository browser (files/commits/diffs/branches/tags),
-user/settings pages, REST API `/api/v1` with OpenAPI contract. All pages
-driven by real data; no static mockups.
+Delivered and verified (evidence: docs/testing/f2-evidence.md): session
+login (Argon2id verification, hardened cookies, CSRF double-submit bound
+to sessions, rate-limited guesses), a server-rendered UI with embedded
+templates/assets and zero JavaScript (dashboard, repository list,
+creation form, repository home with README preview, tree browser, file
+viewer, raw download, paginated commits, commit detail with patch,
+branches, tags, profiles, SSH key and token settings, repository
+settings incl. rename/archive/delete), and the versioned REST API
+`/api/v1` (10 endpoints, token scopes, pagination, structured errors)
+with an OpenAPI contract guarded by a drift test.
+
+Acceptance (all met): every screen renders real backend data; private
+repositories are invisible to unauthorized viewers everywhere; the API
+contract cannot drift silently.
 
 ## F3 — Stable MVP
 

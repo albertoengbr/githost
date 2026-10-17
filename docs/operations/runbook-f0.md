@@ -1,4 +1,4 @@
-# Runbook — F0/F1 operations
+# Runbook — F0–F2 operations
 
 How to install, run and operate a GitHost instance. Update this file with
 every phase.
@@ -86,6 +86,34 @@ $ git push origin main
 
 The SSH endpoint only accepts `git-upload-pack`/`git-receive-pack`;
 interactive sessions are refused and logged.
+
+## Using the web UI
+
+Browse to the server root (`http://githost.example:3000/`):
+
+- **Log in** with your account (sessions last 30 days; login attempts
+  are rate-limited).
+- **New repository** creates a private-by-default repository.
+- Repository pages: file browser, raw download, commit history with
+  patches, branches, tags; settings pages manage visibility, default
+  branch, rename, archive and deletion.
+- **Settings → SSH keys** and **Settings → Tokens** manage personal
+  credentials. Tokens are shown exactly once at creation.
+- Anonymous visitors see public repositories only; private ones
+  answer 404.
+
+## Using the REST API
+
+```console
+$ curl -H "Authorization: token ght_..." http://githost.example:3000/api/v1/user
+$ curl -H "Authorization: token ght_..." \
+       -d '{"name":"from-api","visibility":"private"}' \
+       http://githost.example:3000/api/v1/repos
+```
+
+The full contract is [docs/api/openapi.yaml](../api/openapi.yaml)
+(bearer form also accepted). Scopes: `repo:read` for queries,
+`repo:write` for changes, `admin` for instance-wide listings.
 
 ## Health and diagnostics
 
