@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"time"
 
+	"githost.dev/githost/internal/api"
 	"githost.dev/githost/internal/config"
 	"githost.dev/githost/internal/csrf"
 	"githost.dev/githost/internal/database"
@@ -159,6 +160,13 @@ func Start(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*Serve
 				registerErr = err
 				return
 			}
+			api.Register(mux, api.Deps{
+				Store:  metadata,
+				Perms:  perms,
+				Repos:  repos,
+				Git:    executor,
+				Logger: logger,
+			})
 			httpgit.Register(mux, httpgit.Deps{
 				Store:  metadata,
 				Perms:  perms,
