@@ -1,0 +1,122 @@
+{{define "content"}}
+{{$owner := .Repo.Owner}}{{$name := .Repo.Name}}
+<div class="repo-head">
+  <h1><a href="/{{$owner}}">{{$owner}}</a> / <a href="/{{$owner}}/{{$name}}">{{$name}}</a>
+    · <a href="/{{$owner}}/{{$name}}/pulls">Pull Requests</a> · #{{.PR.Number}}</h1>
+</div>
+
+<div class="card">
+  <div class="latest-commit">
+    <strong>{{.PR.Title}}</strong>
+    {{if eq .PR.State "merged"}}<span class="badge badge-public">merged</span>
+    {{else if eq .PR.State "closed"}}<span class="badge badge-archived">closed</span>
+    {{else}}<span class="badge badge-public">open</span>{{end}}
+    {{if .Conflicts}}<span class="badge badge-archived">conflicts</span>{{end}}
+  </div>
+  <p class="muted">
+    {{.PR.Head}} → {{.PR.Base}} · by {{.PR.Author}} · {{.PR.CreatedAt}}
+    {{if .PR.MergeCommit}} · merged as {{printf "%.10s" .PR.MergeCommit}}{{end}}
+  </p>
+  {{if .PR.BodyHTML}}<div class="markdown-body">{{.PR.BodyHTML}}</div>{{end}}
+</div>
+
+<div class="card">
+  <h3>Commits ({{len .Commits}})</h3>
+  <ul class="commit-list">
+    {{range .Commits}}
+    <li class="commit-item">
+      <div>{{.Subject}}</div>
+      <span class="muted mono">{{printf "%.10s" .Hash}}</span>
+    </li>
+    {{end}}
+  </ul>
+</div>
+
+{{if .Conflicts}}
+<div class="card danger-zone">
+  <h3>⚠ Merge conflicts</h3>
+  <p>The following files conflict:</p>
+  <ul>{{range .Conflicts}}<li><code>{{.}}</code></li>{{end}}</ul>
+</div>
+{{end}}
+
+{{if .Diff}}
+<div class="card">
+  <h3>Changes</h3>
+  <pre class="code diff">{{.Diff}}</pre>
+</div>
+{{end}}
+
+<div class="card">
+  <h3>Reviews ({{.Approvals}} approve, {{.Rejections}} reject)</h3>
+  {{if .Rules}}
+  <p class="muted">Branch protection:
+    {{range .Rules}}<code>{{.Pattern}}</code>{{if .RequireApproval}} (requires approval){{end}} {{end}}
+  </p>
+  {{end}}
+  {{range .Reviews}}
+  <div class="card" style="margin-bottom:.4rem">
+    <p>
+      {{if eq .Verdict "approve"}}<span class="badge badge-public">approve</span>
+      {{else if eq .Verdict "reject"}}<span class="badge badge-archived">reject</span>
+      {{else}}<span class="badge">comment</span>{{end}}
+      <strong>{{.Reviewer}}</strong> · {{.When}}
+    </p>
+    {{if .BodyHTML}}<div class="markdown-body">{{.BodyHTML}}</div>{{end}}
+  </div>
+  {{end}}
+</div>
+
+<div class="card">
+  <h3>Comments</h3>
+  {{range .Comments}}
+  <div class="card" style="margin-bottom:.4rem">
+    <p class="muted">{{.Author}} · {{.CreatedAt}}</p>
+    <div class="markdown-body">{{.BodyHTML}}</div>
+  </div>
+  {{end}}
+</div>
+
+{{if .Username}}
+{{if eq .PR.State "open"}}
+<div class="card">
+  <h3>Actions</h3>
+  <form method="post" action="/{{$owner}}/{{$name}}/pulls/{{.PR.Number}}/review" style="margin-bottom:.8rem">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <label>Review comment <textarea name="body" rows="2"></textarea></label>
+    <button type="submit" name="verdict" value="approve" class="button">✓ Approve</button>
+    <button type="submit" name="verdict" value="reject" class="button danger">✗ Reject</button>
+    <button type="submit" name="verdict" value="comment" class="button">💬 Comment</button>
+  </form>
+
+  <form method="post" action="/{{$owner}}/{{$name}}/pulls/{{.PR.Number}}/merge" style="margin-bottom:.5rem">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <label>Merge strategy
+      <select name="strategy">
+        <option value="merge-commit">Merge commit (preserves history)</option>
+        <option value="squash">Squash (one commit on base)</option>
+        <option value="fast-forward-only">Fast-forward only</option>
+      </select>
+    </label>
+    <button type="submit" {{if .Conflicts}}disabled{{end}}>Merge pull request</button>
+  </form>
+
+  <form method="post" action="/{{$owner}}/{{$name}}/pulls/{{.PR.Number}}/state" class="inline-form">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <button type="submit" name="action" value="close" class="linklike">Close without merging</button>
+  </form>
+</div>
+{{else}}
+<div class="card">
+  {{if eq .PR.State "merged"}}
+  <p>✓ Merged as <code>{{printf "%.12s" .PR.MergeCommit}}</code></p>
+  {{else}}
+  <form method="post" action="/{{$owner}}/{{$name}}/pulls/{{.PR.Number}}/state" class="inline-form">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <button type="submit" name="action" value="reopen" class="linklike">Reopen</button>
+  </form>
+  {{end}}
+</div>
+{{end}}
+{{end}}
+{{end}}

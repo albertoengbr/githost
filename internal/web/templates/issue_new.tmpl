@@ -1,0 +1,23 @@
+{{define "content"}}
+{{$owner := .Repo.Owner}}{{$name := .Repo.Name}}
+<div class="repo-head">
+  <h1><a href="/{{$owner}}">{{$owner}}</a> / <a href="/{{$owner}}/{{$name}}">{{$name}}</a></h1>
+</div>
+<nav class="tabs">
+  <a class="tab" href="/{{$owner}}/{{$name}}/issues">Issues</a>
+  <span class="tab active">New</span>
+</nav>
+
+<div class="card narrow">
+  <h2>New issue</h2>
+  {{if .FormError}}<div class="flash flash-err">{{.FormError}}</div>{{end}}
+  <form method="post" action="/{{$owner}}/{{$name}}/issues/new">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <label>Title <input name="title" required maxlength="500"></label>
+    <label>Description (Markdown)
+      <textarea name="body" rows="10" placeholder="Describe the issue..."></textarea>
+    </label>
+    <button type="submit">Create issue</button>
+  </form>
+</div>
+{{end}}

@@ -1,0 +1,44 @@
+{{define "content"}}
+{{$owner := .Repo.Owner}}{{$name := .Repo.Name}}
+<div class="repo-head">
+  <h1><a href="/{{$owner}}">{{$owner}}</a> / <a href="/{{$owner}}/{{$name}}">{{$name}}</a>
+    {{if eq .Repo.Visibility "private"}}<span class="badge badge-private">private</span>{{end}}
+  </h1>
+</div>
+<nav class="tabs">
+  <a class="tab" href="/{{$owner}}/{{$name}}">Code</a>
+  <a class="tab" href="/{{$owner}}/{{$name}}/commits">Commits</a>
+  <a class="tab" href="/{{$owner}}/{{$name}}/branches">Branches</a>
+  <a class="tab" href="/{{$owner}}/{{$name}}/tags">Tags</a>
+  <span class="tab active">Issues</span>
+  <a class="tab" href="/{{$owner}}/{{$name}}/pulls">Pull Requests</a>
+  {{if .CanManage}}<a class="tab" href="/{{$owner}}/{{$name}}/settings">Settings</a>{{end}}
+</nav>
+
+<div class="page-head">
+  <div>
+    <a class="button" style="margin-right:.5rem" href="/{{$owner}}/{{$name}}/issues">All</a>
+    <a class="button" style="margin-right:.5rem" href="/{{$owner}}/{{$name}}/issues?state=open">Open</a>
+    <a class="button" href="/{{$owner}}/{{$name}}/issues?state=closed">Closed</a>
+  </div>
+  {{if .Username}}<a class="button" href="/{{$owner}}/{{$name}}/issues/new">New issue</a>{{end}}
+</div>
+
+{{if .Issues}}
+<ul class="commit-list">
+  {{range .Issues}}
+  <li class="commit-item">
+    <div>
+      <a class="commit-subject" href="/{{$owner}}/{{$name}}/issues/{{.Number}}">{{.Title}}</a>
+      {{if eq .State "closed"}}<span class="badge badge-archived">closed</span>
+      {{else}}<span class="badge badge-public">open</span>{{end}}
+      {{range .Labels}}<span class="badge" style="background:#{{.Color}}22;color:#{{.Color}}">{{.Name}}</span>{{end}}
+      <p class="muted">#{{.Number}} · {{.CommentCount}} comments · {{.Author}}</p>
+    </div>
+  </li>
+  {{end}}
+</ul>
+{{else}}
+<p class="muted">No issues {{.State}}.</p>
+{{end}}
+{{end}}

@@ -1,0 +1,74 @@
+{{define "content"}}
+{{$owner := .Repo.Owner}}{{$name := .Repo.Name}}
+<div class="repo-head">
+  <h1><a href="/{{$owner}}">{{$owner}}">{{$owner}}</a> / <a href="/{{$owner}}/{{$name}}">{{$name}}</a>
+    · <a href="/{{$owner}}/{{$name}}/issues">Issues</a> · #{{.Issue.Number}}</h1>
+</div>
+
+<div class="card">
+  <div class="latest-commit">
+    <strong>{{.Issue.Title}}</strong>
+    {{if eq .Issue.State "closed"}}<span class="badge badge-archived">closed</span>
+    {{else}}<span class="badge badge-public">open</span>{{end}}
+    {{range .Issue.Labels}}<span class="badge" style="background:#{{.Color}}22;color:#{{.Color}}">{{.Name}}</span>{{end}}
+  </div>
+  <div class="columns">
+    <div style="flex:1;min-width:0">
+      <p class="muted">opened by {{.Issue.Author}} on {{.Issue.CreatedAt}}</p>
+      <div class="markdown-body">{{.Issue.BodyHTML}}</div>
+
+      <h3>Comments</h3>
+      {{range .Comments}}
+      <div class="card" style="margin-bottom:.5rem">
+        <p class="muted">{{.Author}} · {{.CreatedAt}}</p>
+        <div class="markdown-body">{{.BodyHTML}}</div>
+      </div>
+      {{end}}
+
+      {{if .Username}}
+      <form method="post" action="/{{$owner}}/{{$name}}/issues/{{.Issue.Number}}/comment">
+        <input type="hidden" name="csrf" value="{{.CSRF}}">
+        <label>Add comment (Markdown)
+          <textarea name="body" rows="4" required></textarea>
+        </label>
+        <button type="submit">Comment</button>
+      </form>
+      {{end}}
+    </div>
+    <div style="width:14rem;flex-shrink:0">
+      {{if .Username}}
+      <form method="post" action="/{{$owner}}/{{$name}}/issues/{{.Issue.Number}}/state">
+        <input type="hidden" name="csrf" value="{{.CSRF}}">
+        {{if eq .Issue.State "open"}}
+        <button type="submit" name="action" value="close">Close issue</button>
+        {{else}}
+        <button type="submit" name="action" value="reopen">Reopen issue</button>
+        {{end}}
+      </form>
+      {{end}}
+
+      {{if .Labels}}
+      <h3>Labels</h3>
+      {{range .Labels}}
+      <form method="post" action="/{{$owner}}/{{$name}}/issues/{{.Issue.Number}}/label" class="inline-form" style="display:flex;align-items:center;gap:.3rem;margin:.2rem 0">
+        <input type="hidden" name="csrf" value="{{$.CSRF}}">
+        <input type="hidden" name="label_id" value="{{.ID}}">
+        {{if index $.IssueLabels .ID}}
+        <button type="submit" name="action" value="remove" class="badge" style="background:#{{.Color}}22;color:#{{.Color}};cursor:pointer;text-decoration:line-through">{{.Name}} ×</button>
+        {{else}}
+        <button type="submit" name="action" value="add" class="badge" style="background:#{{.Color}}22;color:#{{.Color}};cursor:pointer">{{.Name}} +</button>
+        {{end}}
+      </form>
+      {{end}}
+      {{end}}
+
+      {{if .Events}}
+      <h3>History</h3>
+      {{range .Events}}
+      <p class="muted" style="font-size:.85rem">{{.Actor}} {{.Kind}}{{if .Detail}} ({{.Detail}}){{end}} · {{.When}}</p>
+      {{end}}
+      {{end}}
+    </div>
+  </div>
+</div>
+{{end}}

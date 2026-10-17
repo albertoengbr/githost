@@ -1,0 +1,40 @@
+{{define "content"}}
+{{$owner := .Repo.Owner}}{{$name := .Repo.Name}}
+<div class="repo-head">
+  <h1><a href="/{{$owner}}">{{$owner}}</a> / <a href="/{{$owner}}/{{$name}}">{{$name}}</a>
+    {{if eq .Repo.Visibility "private"}}<span class="badge badge-private">private</span>{{end}}
+  </h1>
+</div>
+<nav class="tabs">
+  <a class="tab" href="/{{$owner}}/{{$name}}">Code</a>
+  <a class="tab" href="/{{$owner}}/{{$name}}/issues">Issues</a>
+  <span class="tab active">Pull Requests</span>
+  {{if .CanManage}}<a class="tab" href="/{{$owner}}/{{$name}}/settings">Settings</a>{{end}}
+</nav>
+
+<div class="page-head">
+  <div>
+    <a class="button" style="margin-right:.5rem" href="/{{$owner}}/{{$name}}/pulls">All</a>
+    <a class="button" href="/{{$owner}}/{{$name}}/pulls?state=open">Open</a>
+  </div>
+  {{if .Username}}<a class="button" href="/{{$owner}}/{{$name}}/pulls/new">New PR</a>{{end}}
+</div>
+
+{{if .Pulls}}
+<ul class="commit-list">
+  {{range .Pulls}}
+  <li class="commit-item">
+    <div>
+      <a class="commit-subject" href="/{{$owner}}/{{$name}}/pulls/{{.Number}}">{{.Title}}</a>
+      {{if eq .State "merged"}}<span class="badge badge-public">merged</span>
+      {{else if eq .State "closed"}}<span class="badge badge-archived">closed</span>
+      {{else}}<span class="badge badge-public">open</span>{{end}}
+      <p class="muted">#{{.Number}} · {{.Head}} → {{.Base}} · {{.Author}}</p>
+    </div>
+  </li>
+  {{end}}
+</ul>
+{{else}}
+<p class="muted">No pull requests {{.State}}.</p>
+{{end}}
+{{end}}

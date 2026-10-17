@@ -22,6 +22,7 @@ import (
 	"githost.dev/githost/internal/csrf"
 	"githost.dev/githost/internal/git"
 	"githost.dev/githost/internal/permissions"
+	"githost.dev/githost/internal/prservice"
 	"githost.dev/githost/internal/ratelimit"
 	"githost.dev/githost/internal/reposervice"
 	"githost.dev/githost/internal/session"
@@ -44,6 +45,9 @@ type Deps struct {
 	Git      *git.Executor
 	Limiter  *ratelimit.Limiter // login throttling
 	Logger   *slog.Logger
+	// Pulls is the PR service; nil disables the PR pages (only used
+	// in tests that don't need collaboration features).
+	Pulls *prservice.Service
 }
 
 // Handler serves the web UI.
@@ -114,6 +118,23 @@ func Register(mux *http.ServeMux, deps Deps) (*Handler, error) {
 	mux.HandleFunc("GET /{owner}/{repo}/settings", h.secureHandler(h.repoSettings))
 	mux.HandleFunc("POST /{owner}/{repo}/settings", h.secureHandler(h.repoSettingsUpdate))
 	mux.HandleFunc("POST /{owner}/{repo}/delete", h.secureHandler(h.repoDelete))
+
+	// Collaboration (F4).
+	mux.HandleFunc("GET /{owner}/{repo}/issues", h.secureHandler(h.issueList))
+	mux.HandleFunc("GET /{owner}/{repo}/issues/new", h.secureHandler(h.issueNew))
+	mux.HandleFunc("POST /{owner}/{repo}/issues/new", h.secureHandler(h.issueNewSubmit))
+	mux.HandleFunc("GET /{owner}/{repo}/issues/{number}", h.secureHandler(h.issueDetail))
+	mux.HandleFunc("POST /{owner}/{repo}/issues/{number}/comment", h.secureHandler(h.issueComment))
+	mux.HandleFunc("POST /{owner}/{repo}/issues/{number}/state", h.secureHandler(h.issueSetState))
+	mux.HandleFunc("POST /{owner}/{repo}/issues/{number}/label", h.secureHandler(h.issueToggleLabel))
+	mux.HandleFunc("GET /{owner}/{repo}/pulls", h.secureHandler(h.pullList))
+	mux.HandleFunc("GET /{owner}/{repo}/pulls/new", h.secureHandler(h.pullNew))
+	mux.HandleFunc("POST /{owner}/{repo}/pulls/new", h.secureHandler(h.pullNewSubmit))
+	mux.HandleFunc("GET /{owner}/{repo}/pulls/{number}", h.secureHandler(h.pullDetail))
+	mux.HandleFunc("POST /{owner}/{repo}/pulls/{number}/review", h.secureHandler(h.pullReview))
+	mux.HandleFunc("POST /{owner}/{repo}/pulls/{number}/comment", h.secureHandler(h.pullComment))
+	mux.HandleFunc("POST /{owner}/{repo}/pulls/{number}/merge", h.secureHandler(h.pullMerge))
+	mux.HandleFunc("POST /{owner}/{repo}/pulls/{number}/state", h.secureHandler(h.pullSetState))
 
 	return h, nil
 }

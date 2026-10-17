@@ -24,6 +24,7 @@ import (
 	"githost.dev/githost/internal/httpserver"
 	"githost.dev/githost/internal/lock"
 	"githost.dev/githost/internal/permissions"
+	"githost.dev/githost/internal/prservice"
 	"githost.dev/githost/internal/ratelimit"
 	"githost.dev/githost/internal/reposervice"
 	"githost.dev/githost/internal/security"
@@ -146,6 +147,7 @@ func Start(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*Serve
 	}
 	repos := reposervice.New(metadata, repoStorage)
 	perms := permissions.New(metadata)
+	pulls := prservice.New(metadata, repos, executor)
 
 	// F2: web interface prerequisites. The instance secret signs CSRF
 	// tokens; login throttling is per-process (single-instance design).
@@ -173,6 +175,7 @@ func Start(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*Serve
 				Git:      executor,
 				Limiter:  loginLimiter,
 				Logger:   logger,
+				Pulls:    pulls,
 			}); err != nil {
 				registerErr = err
 				return

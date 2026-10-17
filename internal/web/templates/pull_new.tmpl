@@ -1,0 +1,33 @@
+{{define "content"}}
+{{$owner := .Repo.Owner}}{{$name := .Repo.Name}}
+<div class="repo-head">
+  <h1><a href="/{{$owner}}">{{$owner}}</a> / <a href="/{{$owner}}/{{$name}}">{{$name}}</a></h1>
+</div>
+<nav class="tabs">
+  <a class="tab" href="/{{$owner}}/{{$name}}/pulls">Pull Requests</a>
+  <span class="tab active">New</span>
+</nav>
+
+<div class="card narrow">
+  <h2>New pull request</h2>
+  {{if .FormError}}<div class="flash flash-err">{{.FormError}}</div>{{end}}
+  <form method="post" action="/{{$owner}}/{{$name}}/pulls/new">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <label>Title <input name="title" required maxlength="500"></label>
+    <label>Base branch (merge into)
+      <select name="base" required>
+        {{range .Branches}}<option value="{{.Short}}">{{.Short}}</option>{{end}}
+      </select>
+    </label>
+    <label>Head branch (merge from)
+      <select name="head" required>
+        {{range .Branches}}<option value="{{.Short}}">{{.Short}}</option>{{end}}
+      </select>
+    </label>
+    <label>Description (Markdown)
+      <textarea name="body" rows="6"></textarea>
+    </label>
+    <button type="submit">Create pull request</button>
+  </form>
+</div>
+{{end}}
