@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"time"
 
@@ -21,9 +22,9 @@ import (
 	"githost.dev/githost/migrations"
 )
 
-// Init prepares a GitHost instance: data directory, instance secret and
-// database schema. It is idempotent: re-running init on a healthy instance
-// performs no destructive action.
+// Init prepares a GitHost instance: data directory, repositories root,
+// instance secret and database schema. It is idempotent: re-running init
+// on a healthy instance performs no destructive action.
 func Init(ctx context.Context, cfg *config.Config) error {
 	if err := os.MkdirAll(cfg.Paths.Data, 0o755); err != nil {
 		return fmt.Errorf("create data directory: %w", err)
@@ -45,6 +46,11 @@ func Init(ctx context.Context, cfg *config.Config) error {
 		return err
 	}
 	return nil
+}
+
+// RepositoriesRoot returns the on-disk root for bare repositories.
+func RepositoriesRoot(cfg *config.Config) string {
+	return filepath.Join(cfg.Paths.Data, "repositories")
 }
 
 // Server is a running GitHost instance: HTTP listener plus open database.

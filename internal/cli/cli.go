@@ -33,7 +33,7 @@ import (
 
 // Run executes the CLI and returns the process exit code: 0 on success,
 // 2 on usage errors, 1 on runtime failures.
-func Run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
+func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
 		usage(stderr)
 		return 2
@@ -48,6 +48,10 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		return runVersion(rest, stdout, stderr)
 	case "doctor":
 		return runDoctor(ctx, rest, stdout, stderr)
+	case "admin":
+		return runAdmin(ctx, rest, stdin, stdout, stderr)
+	case "repo":
+		return runRepo(ctx, rest, stdout, stderr)
 	case "help", "--help", "-h":
 		usage(stdout)
 		return 0
@@ -68,6 +72,8 @@ Commands:
   serve     Start the GitHost server
   doctor    Check the instance and environment for problems
   version   Print version information
+  admin     Manage users, tokens and SSH keys (run "githost admin help")
+  repo      Manage repositories (run "githost repo help")
   help      Show this help
 
 Run "githost <command> --help" for command-specific flags.

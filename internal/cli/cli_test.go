@@ -9,10 +9,13 @@ import (
 	"testing"
 )
 
+// testPassword is the stdin content used by --password-stdin in tests.
+const testPassword = "a-sensible-test-password-1\n"
+
 func runForTest(t *testing.T, args ...string) (int, string, string) {
 	t.Helper()
 	var stdout, stderr bytes.Buffer
-	code := Run(context.Background(), args, &stdout, &stderr)
+	code := Run(context.Background(), args, strings.NewReader(testPassword), &stdout, &stderr)
 	return code, stdout.String(), stderr.String()
 }
 
