@@ -1,0 +1,25 @@
+#!/bin/sh
+
+# githost rc.d script for FreeBSD.
+# Install to /usr/local/etc/rc.d/githost and enable with:
+#   sysrc githost_enable=YES
+#   service githost start
+
+# PROVIDE: githost
+# REQUIRE: DAEMON FILESYSTEMS
+# KEYWORD: shutdown
+
+. /etc/rc.subr
+
+name="githost"
+rcvar="githost_enable"
+
+load_rc_config "$name"
+
+: ${githost_enable:="NO"}
+: ${githost_config:="/usr/local/etc/githost/githost.yaml"}
+
+command="/usr/local/bin/githost"
+command_args="serve --config ${githost_config}"
+
+run_rc_command "$1"

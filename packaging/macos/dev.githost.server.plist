@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>dev.githost.server</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/usr/local/bin/githost</string>
+		<string>serve</string>
+		<string>--config</string>
+		<string>/usr/local/etc/githost/githost.yaml</string>
+	</array>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>KeepAlive</key>
+	<true/>
+	<key>UserName</key>
+	<string>githost</string>
+	<key>WorkingDirectory</key>
+	<string>/usr/local/var/githost</string>
+	<key>StandardOutPath</key>
+	<string>/usr/local/var/log/githost.log</string>
+	<key>StandardErrorPath</key>
+	<string>/usr/local/var/log/githost.log</string>
+</dict>
+</plist>

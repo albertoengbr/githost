@@ -1,0 +1,36 @@
+[Unit]
+Description=GitHost - lightweight self-hosted Git platform
+Documentation=file:/usr/local/share/doc/githost/
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=githost
+Group=githost
+ExecStart=/usr/local/bin/githost serve --config /etc/githost/githost.yaml
+Restart=on-failure
+RestartSec=2
+
+# --- Hardening (githost needs no special capabilities: it binds ports >= 1024)
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+CapabilityBoundingSet=
+AmbientCapabilities=
+ReadWritePaths=/var/lib/githost
+
+[Install]
+WantedBy=multi-user.target

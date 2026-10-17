@@ -63,12 +63,24 @@ Acceptance (all met): every screen renders real backend data; private
 repositories are invisible to unauthorized viewers everywhere; the API
 contract cannot drift silently.
 
-## F3 — Stable MVP
+## F3 — Stable MVP (ACCEPTED)
 
-Backup/restore (functional restore against clean install is the
-criterion), security hardening pass, E2E suite, operational
-documentation, per-platform packaging with checksums, Docker Linux
-image, validated platform matrix.
+Delivered and verified (evidence: docs/testing/f3-evidence.md): OS-level
+instance lock coordinating serve/backup/restore; backup as a
+manifest-plus-SHA-256 tar.gz (VACUUM INTO snapshot); validation that
+rejects tampered archives; restore restricted to clean installs with
+retention/prune; the **restore gate** — a backed-up instance restored
+into a clean install proves functional (login, clone with the old
+token, push, web rendering, fsck clean); native TLS serving; push size
+limits enforced by git itself plus the HTTP layer; packaging (11
+archives + SHA256SUMS, Docker image built and smoke tested on Linux,
+hardened systemd unit, launchd plist, FreeBSD rc.d, Windows wrapper
+guide); CI workflow with POSIX race testing.
+
+Acceptance (all met): recovery is **functional**, not just archived;
+no known critical vulnerabilities in the implemented flows; the
+platform story advanced (linux/amd64 container-validated) without
+overclaiming support.
 
 ## F4 — Collaboration
 

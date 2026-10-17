@@ -4,7 +4,7 @@
 IMPLEMENTING, TESTING, BLOCKED, ACCEPTED. Evidence is required for
 ACCEPTED; percentages are never used.
 
-Last updated: 2026-10-17 (end of F2)
+Last updated: 2026-10-17 (end of F3)
 
 ## Phase summary
 
@@ -12,9 +12,9 @@ Last updated: 2026-10-17 (end of F2)
 |---|---|
 | F0 Foundation | ACCEPTED — evidence: [testing/f0-evidence.md](testing/f0-evidence.md) |
 | F1 Git core | ACCEPTED — evidence: [testing/f1-evidence.md](testing/f1-evidence.md) |
-| F2 Web UI + API | **ACCEPTED** — evidence: [testing/f2-evidence.md](testing/f2-evidence.md) |
-| F3 Stable MVP (backup/restore, packaging, platform validation) | SPECIFIED (high level) — next up |
-| F4 Collaboration | SPECIFIED (high level) |
+| F2 Web UI + API | ACCEPTED — evidence: [testing/f2-evidence.md](testing/f2-evidence.md) |
+| F3 Stable MVP | **ACCEPTED** — evidence: [testing/f3-evidence.md](testing/f3-evidence.md) |
+| F4 Collaboration | SPECIFIED (high level) — next up |
 | F5 Integrations | NOT_STARTED |
 | F6 Expansion | NOT_STARTED |
 
@@ -53,6 +53,16 @@ Last updated: 2026-10-17 (end of F2)
 | Web UI | Light/dark themes, zero JavaScript, embedded assets | ACCEPTED | single CSS via prefers-color-scheme |
 | API | REST /api/v1 (10 endpoints, tokens+scopes, pagination) | ACCEPTED | internal/api (+tests) |
 | API | OpenAPI contract + sync test | ACCEPTED | docs/api/openapi.yaml; drift fails the test |
+| Ops | Instance lock (OS-level, crash-safe) | ACCEPTED | internal/lock (+tests); serve/backup/restore coordination |
+| Ops | Backup create/validate (manifest + SHA-256, VACUUM INTO) | ACCEPTED | internal/backup (+tests) |
+| Ops | Restore into clean install + retention (list/prune) | ACCEPTED | internal/backup; CLI backup subcommands |
+| Ops | **Restore gate: functional instance after restore** | ACCEPTED | tests/e2e/backup_test.go (login, clone, push, web, fsck) |
+| Ops | Native TLS serving | ACCEPTED | server.tls config; handshake-tested in app tests |
+| Ops | Push size limits (receive.maxInputSize + HTTP body cap) | ACCEPTED | limits.max_push_bytes; e2e TestPushSizeLimit |
+| Ops | Packaging script (11 archives + SHA256SUMS) | ACCEPTED | scripts/package.ps1/.sh; run recorded in f3-evidence |
+| Ops | Docker Linux image | ACCEPTED | packaging/docker; built + init/doctor/serve smoke tested |
+| Ops | systemd (hardened) / launchd / rc.d units | ACCEPTED | packaging/; guarded by tests/packaging_test.go |
+| Ops | CI workflow (matrix + race + package) | ACCEPTED (defined) | .github/workflows/ci.yml; YAML-drift test |
 | Ops | Backup/restore | NOT_STARTED | F3 |
 | Collab | Issues / PRs / releases / wiki / LFS / MFA | NOT_STARTED | F4 |
 | Integrations | Webhooks/import/mirror/schedulers/runners | NOT_STARTED | F5 |
@@ -60,39 +70,36 @@ Last updated: 2026-10-17 (end of F2)
 
 ## Known limitations (current)
 
-1. **`go test -race` not run in this environment** (unchanged from F0:
-   Windows host has no C toolchain). Required in POSIX CI via
-   scripts/verify.sh.
+1. **`go test -race` not run in this environment** (Windows host has no C
+   toolchain). The CI workflow runs it on POSIX runners — **activating CI
+   on a live runner is still pending** (workflow committed, not yet
+   executed).
 2. **netbsd/arm64 unsupported** (modernc.org/libc has no port; unchanged
    from F0).
-3. **TLS**: GitHost itself speaks plain HTTP; production deployments are
-   expected behind a TLS-terminating reverse proxy (documented in the
-   runbook). Native TLS support is an F3 task. Session cookies therefore
-   set `Secure` only when the connection is direct TLS; behind a proxy
-   the operator must ensure cookie transport security.
-4. **README rendering** is plain text (`<pre>`); Markdown rendering and
-   syntax highlighting are deferred (with Issues/PRs in F4, where a
-   Markdown renderer becomes mandatory).
-5. **i18n**: UI is English-only; the locales structure arrives with the
-   first translated strings (spec §12 remains on the roadmap).
-6. Only **windows/amd64 has native validation**; all other platforms
-   remain cross-compiled-only.
-7. **SSH shutdown** closes the listener but lets in-flight sessions
-   finish (bounded by the executor's 10-minute timeout).
-8. **Hooks**: no server-side receive hooks are installed yet (branch
-   protection enforcement arrives with F4; see roadmap).
-9. **API surface**: v1 covers users/repos/refs/commits; issues and pull
-   requests endpoints arrive with F4 (spec §15 lists them under the same
-   /api/v1 prefix).
-10. **Password change / MFA**: no self-service password change yet
-    (operator-managed via CLI); MFA is F4 scope.
+3. **Windows native SCM service** is documented via wrapper tools
+   (NSSM/WinSW/Task Scheduler); a first-party SCM handler remains a gap.
+4. **README rendering** is plain text (`<pre>`); Markdown rendering is
+   deferred to F4 (with Issues/PRs).
+5. **i18n**: UI is English-only.
+6. **Platform validation**: windows/amd64 is dev-host-validated;
+   linux/amd64 is container-validated (init/doctor/serve); every other
+   platform remains cross-compiled-only. No platform is declared
+   officially supported until native test runs exist.
+7. **SSH shutdown** lets in-flight sessions finish (bounded by the
+   10-minute executor timeout).
+8. **Hooks**: no server-side receive hooks yet (F4 branch protection).
+9. **API surface**: issues and pull requests endpoints arrive with F4.
+10. **Password change / MFA**: no self-service password change yet; MFA
+    is F4 scope.
 
-## Next task (F3 entry)
+## Next task (F4 entry)
 
-Stable MVP hardening: backup and restore with manifest + hashes and a
-restore-against-clean-install acceptance test, native TLS option,
-packaging (per-OS archives with checksums, Docker Linux image, service
-manager unit files), payload size limits on Git pushes, and CI wiring
-(race detector on POSIX, cross-compile matrix, native validation runs).
+Collaboration features: Issues (with Markdown rendering, labels,
+assignees, history), Pull Requests (branch comparison, reviews with
+approve/reject, merge strategies, conflict detection), branch protection
+enforced by platform-installed receive hooks, Releases with assets,
+Git-backed Wiki — followed by Git LFS and MFA. Design notes and merge
+strategies need their specification before implementation begins
+(spec §13).
 
 

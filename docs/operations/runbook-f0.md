@@ -1,4 +1,4 @@
-# Runbook — F0–F2 operations
+# Runbook — F0–F3 operations
 
 How to install, run and operate a GitHost instance. Update this file with
 every phase.
@@ -155,9 +155,55 @@ repositories directory with git itself is also a valid data export.
 | 404 with a valid token | Repository does not exist **or** you have no access (same answer on purpose) |
 | Push to public repo asks for credentials | Anonymous write is never allowed — use a `repo:write` token |
 
-## Service manager integration (F0/F1 guidance)
+## Backup and restore (F3)
 
-Run `githost serve` under the OS service manager so it starts at boot
-and restarts on failure. Structured JSON logs go to stdout — capture
-them in the journal/syslog wrapper. Concrete unit files (systemd,
-launchd, Windows Service, rc.d) are F3 packaging deliverables.
+Backups are single tar.gz files containing a manifest with the SHA-256
+of every file, a consistent SQLite snapshot (VACUUM INTO), the instance
+secret, SSH host keys and all bare repositories. The server must be
+stopped — an OS-level instance lock enforces it and refuses otherwise.
+
+```console
+$ githost backup create --config githost.yaml          # -> backups/githost-backup-<ts>.tar.gz
+$ githost backup validate --archive backups/<file>.tar.gz
+$ githost backup list --config githost.yaml
+$ githost backup prune --config githost.yaml --keep 7
+```
+
+Restoring targets a **clean data directory** (an old instance must be
+moved away first — this is deliberate):
+
+```console
+$ githost backup restore --archive backups/<file>.tar.gz \
+                          --data /var/lib/githost-new \
+                          --config-out /etc/githost/githost-restored.yaml
+```
+
+Then point (or copy) `githost.yaml` at the restored data directory and
+`githost serve`. The acceptance proof for this flow lives in
+tests/e2e/backup_test.go: login, tokens, repositories and pushes all
+work after a restore.
+
+## Native TLS (F3)
+
+Set `server.tls.enabled: true` with `cert_file`/`key_file` to serve
+HTTPS directly (certificates must be readable at startup; the server
+fails fast otherwise). With native TLS, session cookies set the Secure
+flag automatically. Reverse proxy deployments remain equally supported.
+
+## Push limits (F3)
+
+`limits.max_push_bytes` (default 512 MiB) caps accepted packs. git
+itself enforces it (receive.maxInputSize) on both transports and the
+HTTP layer caps the request body. Raise the limit for repositories with
+legitimately large artifacts — the value counts the **compressed**
+pack, not the file sizes.
+
+## Service manager integration
+
+Concrete unit files ship in `packaging/`: hardened systemd unit
+(+install README), macOS launchd plist, FreeBSD rc.d script, and a
+Windows guide (NSSM/WinSW/Task Scheduler — a first-party Windows SCM
+handler is a documented gap). The Docker image lives in
+`packaging/docker/Dockerfile` — remember to set
+`server.address: "0.0.0.0"` in the container config when publishing
+ports.
