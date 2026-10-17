@@ -79,12 +79,13 @@ func wantGitFail(t *testing.T, dir, wantInOutput string, args ...string) string 
 	return out
 }
 
-// server is a live GitHost instance bound to an ephemeral port, with a
-// second database handle for seeding.
+// server is a live GitHost instance bound to ephemeral HTTP and SSH
+// ports, with a second database handle for seeding.
 type server struct {
 	t       *testing.T
 	cfg     *config.Config
 	addr    string
+	sshAddr string
 	appSrv  *app.Server
 	store   *store.Store
 	reposvc *reposervice.Service
@@ -101,6 +102,9 @@ func startServer(t *testing.T) *server {
 		t.Fatal(err)
 	}
 	cfg.Server.HTTPPort = 0 // ephemeral
+	cfg.Server.SSH.Enabled = true
+	cfg.Server.SSH.Address = "127.0.0.1"
+	cfg.Server.SSH.Port = 0 // ephemeral
 
 	if err := app.Init(ctx, cfg); err != nil {
 		t.Fatalf("app.Init: %v", err)
@@ -133,6 +137,10 @@ func startServer(t *testing.T) *server {
 	if err != nil {
 		t.Fatalf("app.Start: %v", err)
 	}
+	sshHost := ""
+	if sshBound := appSrv.SSHAddr(); sshBound != nil {
+		sshHost = sshBound.String()
+	}
 	t.Cleanup(func() {
 		stopCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
@@ -143,6 +151,7 @@ func startServer(t *testing.T) *server {
 		t:       t,
 		cfg:     cfg,
 		addr:    appSrv.Addr().String(),
+		sshAddr: sshHost,
 		appSrv:  appSrv,
 		store:   st,
 		reposvc: svc,

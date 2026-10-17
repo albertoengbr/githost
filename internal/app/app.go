@@ -25,6 +25,7 @@ import (
 	"githost.dev/githost/internal/storage"
 	"githost.dev/githost/internal/store"
 	"githost.dev/githost/internal/transport/httpgit"
+	"githost.dev/githost/internal/transport/sshgit"
 	"githost.dev/githost/migrations"
 )
 
@@ -59,12 +60,14 @@ func RepositoriesRoot(cfg *config.Config) string {
 	return filepath.Join(cfg.Paths.Data, "repositories")
 }
 
-// Server is a running GitHost instance: HTTP listener plus open database.
+// Server is a running GitHost instance: HTTP listener, optional SSH
+// listener and one open database.
 type Server struct {
 	cfg    *config.Config
 	logger *slog.Logger
 	db     *sql.DB
 	http   *http.Server
+	ssh    *sshgit.Server
 	addr   net.Addr
 }
 
@@ -136,6 +139,32 @@ func Start(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*Serve
 		http:   httpSrv,
 		addr:   ln.Addr(),
 	}
+
+	// Restricted Git-over-SSH transport (opt-in via configuration).
+	if cfg.Server.SSH.Enabled {
+		sshServer, err := sshgit.New(sshgit.Deps{
+			Store:       metadata,
+			Perms:       perms,
+			Repos:       repos,
+			Git:         executor,
+			Logger:      logger,
+			HostKeysDir: filepath.Join(cfg.Paths.Data, "ssh"),
+		})
+		if err != nil {
+			db.Close()
+			ln.Close()
+			return nil, err
+		}
+		sshAddr := net.JoinHostPort(cfg.Server.SSH.Address, strconv.Itoa(cfg.Server.SSH.Port))
+		bound, err := sshServer.ListenAndServe(sshAddr)
+		if err != nil {
+			db.Close()
+			ln.Close()
+			return nil, fmt.Errorf("ssh listen on %s: %w", sshAddr, err)
+		}
+		s.ssh = sshServer
+		logger.Info("ssh_server_started", "addr", bound.String())
+	}
 	go func() {
 		if err := httpSrv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			logger.Error("http_server_failed", "err", err)
@@ -145,10 +174,19 @@ func Start(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*Serve
 	return s, nil
 }
 
-// Addr returns the bound listener address (useful when the configured port
+// Addr returns the bound HTTP listener address (useful when the configured port
 // is 0 and the kernel assigned an ephemeral one).
 func (s *Server) Addr() net.Addr {
 	return s.addr
+}
+
+// SSHAddr returns the bound SSH listener address, or nil when the SSH
+// transport is disabled.
+func (s *Server) SSHAddr() net.Addr {
+	if s.ssh == nil {
+		return nil
+	}
+	return s.ssh.Addr()
 }
 
 // Config returns the configuration the server was started with.
@@ -156,11 +194,17 @@ func (s *Server) Config() *config.Config {
 	return s.cfg
 }
 
-// Stop shuts down the HTTP server gracefully and closes the database.
+// Stop shuts down the HTTP server gracefully, stops accepting SSH
+// connections and closes the database.
 func (s *Server) Stop(ctx context.Context) error {
 	var errs []error
 	if err := s.http.Shutdown(ctx); err != nil {
 		errs = append(errs, fmt.Errorf("http shutdown: %w", err))
+	}
+	if s.ssh != nil {
+		if err := s.ssh.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("ssh close: %w", err))
+		}
 	}
 	if err := s.db.Close(); err != nil {
 		errs = append(errs, fmt.Errorf("database close: %w", err))
