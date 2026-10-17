@@ -93,6 +93,12 @@ type server struct {
 }
 
 func startServer(t *testing.T) *server {
+	return startServerCfg(t, nil)
+}
+
+// startServerCfg boots a server with an optional configuration tweak
+// applied before startup (used by tests that change limits).
+func startServerCfg(t *testing.T, tweak func(cfg *config.Config)) *server {
 	t.Helper()
 	ctx := context.Background()
 	dir := t.TempDir()
@@ -105,6 +111,9 @@ func startServer(t *testing.T) *server {
 	cfg.Server.SSH.Enabled = true
 	cfg.Server.SSH.Address = "127.0.0.1"
 	cfg.Server.SSH.Port = 0 // ephemeral
+	if tweak != nil {
+		tweak(cfg)
+	}
 
 	if err := app.Init(ctx, cfg); err != nil {
 		t.Fatalf("app.Init: %v", err)

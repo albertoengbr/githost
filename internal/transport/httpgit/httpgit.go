@@ -16,6 +16,7 @@ import (
 	"log/slog"
 	"net/http"
 	"path"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -33,6 +34,8 @@ type Deps struct {
 	Repos  *reposervice.Service
 	Git    *git.Executor
 	Logger *slog.Logger
+	// MaxPushBytes caps receive-pack input (limits.max_push_bytes).
+	MaxPushBytes int64
 }
 
 // serviceSpec describes one Smart HTTP service.
@@ -320,12 +323,25 @@ func (h *handler) handleService(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Expires", "Fri, 01 Jan 1980 00:00:00 GMT")
 
 	counter := &countingWriter{ResponseWriter: w}
-	_, err = h.deps.Git.Run(r.Context(), git.Options{
+	pushLimit := h.deps.MaxPushBytes
+	if pushLimit <= 0 {
+		pushLimit = 512 << 20
+	}
+	runOpts := git.Options{
 		Args:   []string{spec.gitSub, "--stateless-rpc", diskPath},
 		Env:    gitProtocolEnv(r),
 		Stdin:  r.Body,
 		Stdout: counter,
-	})
+	}
+	if spec.push {
+		// Belt and suspenders: git enforces the pack limit itself
+		// (receive.maxInputSize) and the HTTP layer caps the body.
+		runOpts.Config = []string{"receive.maxInputSize=" + strconv.FormatInt(pushLimit, 10)}
+		if pushLimit > 0 {
+			runOpts.Stdin = http.MaxBytesReader(w, r.Body, pushLimit)
+		}
+	}
+	_, err = h.deps.Git.Run(r.Context(), runOpts)
 	if err != nil {
 		var exitErr *git.ExitError
 		if errors.As(err, &exitErr) && counter.written == 0 {

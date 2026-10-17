@@ -63,6 +63,13 @@ var allowedExtraEnv = map[string]bool{
 
 var gitProtocolValue = regexp.MustCompile(`^version=[0-9]+$`)
 
+// gitConfigEntry validates "key=value" pairs passed as `git -c` settings.
+// Keys are dot-separated identifiers (git config keys are
+// case-insensitive; camelCase like receive.maxInputSize is canonical)
+// and values are conservative (sizes, booleans, simple tokens) —
+// nothing shell-like ever reaches git.
+var gitConfigEntry = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9]*(\.[a-zA-Z][a-zA-Z0-9]*)+=[A-Za-z0-9._:+-]{1,64}$`)
+
 // Executor runs the official git binary under strict constraints.
 type Executor struct {
 	bin    string
@@ -87,6 +94,7 @@ type Options struct {
 	Args    []string
 	Dir     string        // working directory; must be absolute when non-empty
 	Env     []string      // extra "KEY=VALUE" entries; keys are allowlisted
+	Config  []string      // "key=value" git -c settings; strictly validated
 	Timeout time.Duration // zero means DefaultTimeout
 	Stdin   io.Reader     // nil for no input
 	Stdout  io.Writer     // nil: captured in Result; set: streamed (transports)
@@ -143,6 +151,11 @@ func (e *Executor) Run(ctx context.Context, opts Options) (*Result, error) {
 	if opts.Dir != "" && !filepath.IsAbs(opts.Dir) {
 		return nil, fmt.Errorf("git: working directory must be absolute, got %q", opts.Dir)
 	}
+	for _, entry := range opts.Config {
+		if !gitConfigEntry.MatchString(entry) {
+			return nil, fmt.Errorf("git: invalid -c setting %q", entry)
+		}
+	}
 	env, err := buildEnv(opts.Env)
 	if err != nil {
 		return nil, err
@@ -155,7 +168,13 @@ func (e *Executor) Run(ctx context.Context, opts Options) (*Result, error) {
 	runCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(runCtx, e.bin, opts.Args...)
+	// Validated -c settings precede the subcommand on the argv.
+	argv := make([]string, 0, 2*len(opts.Config)+len(opts.Args)+1)
+	for _, entry := range opts.Config {
+		argv = append(argv, "-c", entry)
+	}
+	argv = append(argv, opts.Args...)
+	cmd := exec.CommandContext(runCtx, e.bin, argv...)
 	cmd.Dir = opts.Dir
 	cmd.Env = env
 	cmd.Stdin = opts.Stdin

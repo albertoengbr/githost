@@ -33,6 +33,8 @@ type Deps struct {
 	Git         *git.Executor
 	Logger      *slog.Logger
 	HostKeysDir string
+	// MaxPushBytes caps receive-pack input (limits.max_push_bytes).
+	MaxPushBytes int64
 }
 
 // Server is the restricted Git-over-SSH server.
@@ -303,13 +305,21 @@ func (s *Server) serveExec(ctx context.Context, conn *ssh.ServerConn, channel ss
 
 	// SSH is stateful: git drives the whole protocol conversation over
 	// the channel; no --stateless-rpc here.
-	_, runErr := s.deps.Git.Run(ctx, git.Options{
+	runOpts := git.Options{
 		Args:   []string{spec.gitSub, diskPath},
 		Env:    extraEnv,
 		Stdin:  channel,
 		Stdout: channel,
 		Stderr: channel.Stderr(),
-	})
+	}
+	if spec.push {
+		limit := s.deps.MaxPushBytes
+		if limit <= 0 {
+			limit = 512 << 20
+		}
+		runOpts.Config = []string{"receive.maxInputSize=" + strconv.FormatInt(limit, 10)}
+	}
+	_, runErr := s.deps.Git.Run(ctx, runOpts)
 	if runErr != nil {
 		s.logger.Error("ssh_git_service_failed", "service", service, "err", runErr)
 	}

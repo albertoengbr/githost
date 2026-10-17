@@ -185,11 +185,12 @@ func Start(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*Serve
 				Logger: logger,
 			})
 			httpgit.Register(mux, httpgit.Deps{
-				Store:  metadata,
-				Perms:  perms,
-				Repos:  repos,
-				Git:    executor,
-				Logger: logger,
+				Store:        metadata,
+				Perms:        perms,
+				Repos:        repos,
+				Git:          executor,
+				Logger:       logger,
+				MaxPushBytes: cfg.Limits.MaxPushBytes,
 			})
 		},
 	})
@@ -210,6 +211,22 @@ func Start(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*Serve
 		Handler:           httpgit.Guard(handler.Handler()),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
+	if cfg.Server.TLS.Enabled {
+		// Fail fast on unreadable certificates: a broken TLS config must
+		// surface at startup, not on the first request.
+		if _, err := os.Stat(cfg.Server.TLS.CertFile); err != nil {
+			db.Close()
+			ln.Close()
+			releaseLock()
+			return nil, fmt.Errorf("server.tls.cert_file: %w", err)
+		}
+		if _, err := os.Stat(cfg.Server.TLS.KeyFile); err != nil {
+			db.Close()
+			ln.Close()
+			releaseLock()
+			return nil, fmt.Errorf("server.tls.key_file: %w", err)
+		}
+	}
 	s := &Server{
 		cfg:    cfg,
 		logger: logger,
@@ -222,12 +239,13 @@ func Start(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*Serve
 	// Restricted Git-over-SSH transport (opt-in via configuration).
 	if cfg.Server.SSH.Enabled {
 		sshServer, err := sshgit.New(sshgit.Deps{
-			Store:       metadata,
-			Perms:       perms,
-			Repos:       repos,
-			Git:         executor,
-			Logger:      logger,
-			HostKeysDir: filepath.Join(cfg.Paths.Data, "ssh"),
+			Store:        metadata,
+			Perms:        perms,
+			Repos:        repos,
+			Git:          executor,
+			Logger:       logger,
+			HostKeysDir:  filepath.Join(cfg.Paths.Data, "ssh"),
+			MaxPushBytes: cfg.Limits.MaxPushBytes,
 		})
 		if err != nil {
 			db.Close()
@@ -247,11 +265,19 @@ func Start(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*Serve
 		logger.Info("ssh_server_started", "addr", bound.String())
 	}
 	go func() {
-		if err := httpSrv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		if cfg.Server.TLS.Enabled {
+			if err := httpSrv.ServeTLS(ln, cfg.Server.TLS.CertFile, cfg.Server.TLS.KeyFile); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				logger.Error("https_server_failed", "err", err)
+			}
+		} else if err := httpSrv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			logger.Error("http_server_failed", "err", err)
 		}
 	}()
-	logger.Info("http_server_started", "addr", ln.Addr().String())
+	scheme := "http"
+	if cfg.Server.TLS.Enabled {
+		scheme = "https"
+	}
+	logger.Info("http_server_started", "addr", ln.Addr().String(), "scheme", scheme)
 	return s, nil
 }
 

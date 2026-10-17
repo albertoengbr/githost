@@ -39,15 +39,16 @@ type Config struct {
 	Database Database `yaml:"database"`
 	Logging  Logging  `yaml:"logging"`
 	Security Security `yaml:"security"`
+	Limits   Limits   `yaml:"limits"`
 }
 
-// Server holds the HTTP listener settings and the SSH transport settings
-// implemented in F1. The SSH section is part of the file format from F0 so
-// configurations stay forward-compatible.
+// Server holds the HTTP listener settings, the SSH transport settings
+// and the native TLS settings.
 type Server struct {
 	Address  string `yaml:"address"`
 	HTTPPort int    `yaml:"http_port"`
 	SSH      SSH    `yaml:"ssh"`
+	TLS      TLS    `yaml:"tls"`
 }
 
 // SSH configures the Git-over-SSH transport (F1).
@@ -55,6 +56,14 @@ type SSH struct {
 	Enabled bool   `yaml:"enabled"`
 	Address string `yaml:"address"`
 	Port    int    `yaml:"port"`
+}
+
+// TLS configures native HTTPS serving (F3). When enabled, the HTTP
+// listener serves TLS directly; a reverse proxy is no longer required.
+type TLS struct {
+	Enabled  bool   `yaml:"enabled"`
+	CertFile string `yaml:"cert_file"`
+	KeyFile  string `yaml:"key_file"`
 }
 
 // Paths holds filesystem locations. Relative values resolve against the
@@ -87,6 +96,16 @@ type Security struct {
 	AllowRegistration bool   `yaml:"allow_registration"`
 }
 
+// Limits bounds resource usage. MaxPushBytes caps the pack size a
+// receive-pack accepts (enforced via git's receive.maxInputSize and the
+// HTTP request body limit).
+type Limits struct {
+	MaxPushBytes int64 `yaml:"max_push_bytes"`
+}
+
+// DefaultMaxPushBytes caps pushes at 512 MiB unless configured.
+const DefaultMaxPushBytes = 512 << 20
+
 // Default returns the built-in default configuration with relative paths.
 func Default() *Config {
 	return &Config{
@@ -110,6 +129,9 @@ func Default() *Config {
 		Security: Security{
 			SecretFile:        "",
 			AllowRegistration: false,
+		},
+		Limits: Limits{
+			MaxPushBytes: DefaultMaxPushBytes,
 		},
 	}
 }
@@ -172,6 +194,15 @@ func (c *Config) Resolve(baseDir string) error {
 	} else {
 		c.Security.SecretFile = abs(c.Security.SecretFile)
 	}
+	if c.Server.TLS.CertFile != "" {
+		c.Server.TLS.CertFile = abs(c.Server.TLS.CertFile)
+	}
+	if c.Server.TLS.KeyFile != "" {
+		c.Server.TLS.KeyFile = abs(c.Server.TLS.KeyFile)
+	}
+	if c.Limits.MaxPushBytes <= 0 {
+		c.Limits.MaxPushBytes = DefaultMaxPushBytes
+	}
 	return nil
 }
 
@@ -211,6 +242,14 @@ func (c *Config) Validate() error {
 	}
 	if !filepath.IsAbs(c.Security.SecretFile) {
 		return fmt.Errorf("security.secret_file: %q is not absolute (call Resolve first)", c.Security.SecretFile)
+	}
+	if c.Limits.MaxPushBytes <= 0 {
+		return fmt.Errorf("limits.max_push_bytes: must be a positive number of bytes")
+	}
+	if c.Server.TLS.Enabled {
+		if c.Server.TLS.CertFile == "" || c.Server.TLS.KeyFile == "" {
+			return fmt.Errorf("server.tls: cert_file and key_file are required when tls is enabled")
+		}
 	}
 	return nil
 }

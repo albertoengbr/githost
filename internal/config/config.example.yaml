@@ -15,6 +15,12 @@ server:
     enabled: false
     address: "0.0.0.0"
     port: 2222
+  # Native TLS (F3): when enabled, GitHost serves HTTPS directly and a
+  # reverse proxy is no longer required.
+  tls:
+    enabled: false
+    cert_file: ""
+    key_file: ""
 
 paths:
   # Root data directory: database, secret key and (from F1) the bare Git
@@ -42,3 +48,8 @@ security:
   # Public self-registration is disabled by default. Create users with
   # `githost admin create-user` (F1).
   allow_registration: false
+
+limits:
+  # Maximum accepted pack size for pushes, in bytes (default 512 MiB).
+  # Enforced by git itself (receive.maxInputSize) and by the HTTP layer.
+  max_push_bytes: 536870912
