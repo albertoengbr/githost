@@ -37,12 +37,16 @@ const DefaultTimeout = 10 * time.Minute
 // execute. Anything else is rejected before a process is spawned. Phases
 // extend this list only after their ADR/security review.
 var allowedSubcommands = map[string]bool{
+	"cat-file":         true,
 	"check-ref-format": true,
 	"config":           true, // constant keys only — never user-supplied keys
 	"count-objects":    true,
+	"diff-tree":        true,
 	"for-each-ref":     true,
 	"fsck":             true,
 	"init":             true,
+	"log":              true,
+	"ls-tree":          true,
 	"receive-pack":     true,
 	"rev-parse":        true,
 	"symbolic-ref":     true,

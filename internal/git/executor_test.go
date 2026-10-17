@@ -56,7 +56,7 @@ func TestInitBareAndRevParse(t *testing.T) {
 func TestSubcommandAllowlist(t *testing.T) {
 	e := newExecutor(t)
 	_, err := e.Run(context.Background(), Options{
-		Args: []string{"log"}, // known git subcommand, but not allowlisted
+		Args: []string{"gc"}, // known git subcommand, but not allowlisted
 	})
 	if err == nil || !strings.Contains(err.Error(), "not allowed") {
 		t.Fatalf("err = %v, want allowlist rejection", err)
