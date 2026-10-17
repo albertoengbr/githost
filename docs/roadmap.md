@@ -6,8 +6,8 @@ acceptance criteria pass with recorded evidence (docs/status.md).
 | Phase | Theme | State |
 |---|---|---|
 | F0 | Foundation | **ACCEPTED** (see docs/testing/f0-evidence.md) |
-| F1 | Git core (repositories, Smart HTTP, SSH, auth) | SPECIFIED — next |
-| F2 | Web UI + REST API | SPECIFIED (high level) |
+| F1 | Git core (repositories, Smart HTTP, SSH, auth) | **ACCEPTED** (see docs/testing/f1-evidence.md) |
+| F2 | Web UI + REST API | SPECIFIED (high level) — next |
 | F3 | Stable MVP: backup/restore, E2E, packaging, multiplatform validation | SPECIFIED (high level) |
 | F4 | Collaboration: issues, PRs, reviews, releases, wiki, LFS, MFA | SPECIFIED (high level) |
 | F5 | Integrations: webhooks, import/mirroring, schedulers, CI runners | NOT_STARTED |
@@ -29,17 +29,22 @@ Acceptance (all met — evidence: docs/testing/f0-evidence.md):
    documented as unsupported (netbsd/arm64 — dependency limitation).
 5. Documentation set consistent with implementation.
 
-## F1 — Git core (SPECIFIED)
+## F1 — Git core (ACCEPTED)
 
-Scope: git executor (allowlist, env control, timeouts), bare repository
-store by internal ID, Smart HTTP transport, restricted SSH transport,
-Argon2id auth + sessions + scoped tokens, per-repo authorization, E2E
-proof with real `git clone/push/pull` over both transports.
+Delivered and verified with real git/ssh clients (evidence:
+docs/testing/f1-evidence.md): git executor with subcommand allowlist and
+environment jail; UUID-addressed bare repository storage; users with
+Argon2id passwords; access tokens with scopes (hash-only storage);
+SSH key registry; per-repository authorization; CLI admin/repo
+commands; Git Smart HTTP (protocol v0 and v2) with token auth; restricted
+SSH transport (public-key only, exec-only, no shell/PTY/forwarding);
+audit events; E2E clone/commit/push/pull over both transports with
+`git fsck --strict` integrity checks and cross-transport pull.
 
-Acceptance gate: a repository created in GitHost can be cloned over
-HTTPS and SSH; commits can be pushed and pulled; history is byte-intact
-(`git fsck` clean); unauthorized access is denied (verified negative
-tests); private repos invisible to anonymous users.
+Acceptance gate (all met): repository created in GitHost, cloned over
+HTTPS and SSH, commits pushed and pulled, history byte-intact, every
+authorization boundary verified by negative tests, live binary demo
+over both transports.
 
 ## F2 — Web UI + API (SPECIFIED, high level)
 

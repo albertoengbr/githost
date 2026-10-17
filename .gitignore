@@ -16,3 +16,6 @@
 # OS noise
 .DS_Store
 Thumbs.db
+
+# accidental device-name artifacts
+NUL

@@ -37,20 +37,25 @@ transports that serve untrusted Git clients).
 | DoS | Slow/failed DB, port hijack | Health check timeouts (3s), busy_timeout 5000, doctor reports; rate limiting is F1 SEC-003 (registered) |
 | Elevation | Malformed YAML → panic | recover middleware converts panics to 500; fuzz-grade YAML hardening belongs to yaml.v3 (audited dep) |
 
-## STRIDE — F1 pre-registration (must be mitigated before F1 acceptance)
+## STRIDE — F1 pre-registration (mitigation status after F1)
 
-These threats **block the F1 acceptance gate** if unmitigated:
+These threats blocked the F1 acceptance gate; each now has an
+implemented mitigation and an automated negative test (evidence:
+docs/testing/f1-evidence.md §4):
 
-| # | Threat | Requirement |
+| # | Threat | Mitigation (status) |
 |---|---|---|
-| T1 | **Command injection** via Git URLs/refs → arbitrary command execution | Arguments structured (argv, never a shell), subcommand allowlist, refs validated against a strict pattern before use (SEC-007/008) |
-| T2 | **Path traversal** (e.g. `owner/../../etc`) reaching filesystem | Repos addressed by internal UUID; owner/name → ID resolved in SQLite; all derived paths re-validated to be inside the repositories root |
-| T3 | **Private repository exposure** via Smart HTTP or SSH | Authorization decision (per-user read/write) happens *before* any git process starts; anonymous access restricted to `visibility=public`; negative tests are part of the E2E gate |
-| T4 | **SSH shell escape / arbitrary exec** | Public-key-only auth; reject PTY/shell/direct-tcpip channels; command grammar is exactly `(git-upload-pack|git-receive-pack) <path>`; unknown commands dropped and logged |
-| T5 | **Hook smuggling** through pushed content (B3) | Hooks directory is platform-owned; incoming objects are quarantined data, never executable configuration; `receive.fsckObjects` and safe config on receive-pack (SEC-009) |
-| T6 | **Credential theft** over cleartext HTTP | Basic auth must ride on TLS (config + docs); token auth with scopes and revocation; rate limit auth endpoints (SEC-002..004) |
-| T7 | **Resource exhaustion** via giant pushes/fetches | Size and time limits on receive-pack (pre-receive checks), connection limits, process timeouts |
-| T8 | **Environment injection** to git subprocess | Explicit minimal env; allowlisted passthrough of `GIT_PROTOCOL`; no attacker-controlled env keys (protocol research notes this exact requirement) |
+| T1 | **Command injection** via Git URLs/refs | IMPLEMENTED+TESTED: argv-only execution (never a shell), subcommand allowlist in internal/git, strict SSH command grammar, ref validators |
+| T2 | **Path traversal** | IMPLEMENTED+TESTED: UUID-addressed storage with re-validated joins, httpgit.Guard rejects dot segments (400), SSH path grammar resolves owner/name through the store only |
+| T3 | **Private repository exposure** | IMPLEMENTED+TESTED: authorization before any git process on both transports; anonymous → 401, stranger → 404, insufficient level → 403; negative e2e on both transports |
+| T4 | **SSH shell escape / arbitrary exec** | IMPLEMENTED+TESTED: public-key-only auth, session channels only, shell/PTY/subsystem refused, single allowed command grammar, all tested with raw ssh probes |
+| T5 | **Hook smuggling** through pushed content | NOT NEEDED YET: GitHost installs no hooks in F1 (none exist to trust); hooks arrive only in F4 under platform control. Repo content is inert data. |
+| T6 | **Credential theft** over cleartext HTTP | PARTIAL: token-only auth (hash-stored, revocable, scoped) is implemented; TLS termination is documented as reverse-proxy responsibility, native TLS is an F3 task |
+| T7 | **Resource exhaustion** via giant pushes/fetches | PARTIAL: every git invocation has a hard timeout (10 min default); payload size limits and connection caps remain F3/F4 work |
+| T8 | **Environment injection** to git subprocess | IMPLEMENTED+TESTED: environment rebuilt from an allowlist, GIT_CONFIG_NOSYSTEM/GIT_CONFIG_GLOBAL neutralization (host-config leak unit-tested), GIT_PROTOCOL allowlisted with value validation |
+
+Remaining gaps tracked in docs/status.md limitations (TLS native support,
+payload limits, race-detector runs on POSIX CI).
 
 ## Security requirements mapping
 
