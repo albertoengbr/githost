@@ -1,0 +1,18 @@
+# Build output
+/bin/
+/dist/
+
+# A checkout can double as a dev instance; instance state is never committed
+/githost.yaml
+/data/
+*.db
+*.db-wal
+*.db-shm
+
+# Go test artifacts
+*.test
+*.prof
+
+# OS noise
+.DS_Store
+Thumbs.db
