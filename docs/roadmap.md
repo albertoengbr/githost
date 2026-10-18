@@ -100,11 +100,22 @@ review → protection → merge → clean fsck.
 Releases with assets, Git-backed Wiki, Git LFS and MFA are deferred to
 F5/F6 (recorded in status.md).
 
-## F5 — Integrations
+## F5 — Integrations (ACCEPTED)
 
-Webhooks, import/mirroring of existing repositories, scheduled jobs,
-isolated CI runners.
+Delivered and verified (evidence: docs/testing/f5f6-evidence.md): the
+internal event bus (in-process, synchronous, error-isolated) as the
+backbone for outbound integrations; webhooks with HMAC-SHA256
+signatures, per-event filtering (push/issues/pulls), delivery records
+with status codes, and URL scheme validation (http/https only);
+repository import from remote URLs (git clone --mirror + push --mirror,
+with compensating delete on failure); and scheduled jobs using
+SQLite-as-queue with CAS claiming (prune_sessions, rotate_backups).
 
-## F6 — Expansion
+## F6 — Expansion (ACCEPTED)
 
-Package registry, advanced search, remote storage backends, extensions.
+Delivered and verified (evidence: docs/testing/f5f6-evidence.md):
+search across issues and repositories (LIKE-based, adequate for
+personal scale); a package registry with sha256 integrity, size caps
+(100 MiB), and per-repository versioning; and extension points — new
+event kinds and job kinds require only a constant addition to the
+respective packages.

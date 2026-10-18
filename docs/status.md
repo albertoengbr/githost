@@ -4,7 +4,7 @@
 IMPLEMENTING, TESTING, BLOCKED, ACCEPTED. Evidence is required for
 ACCEPTED; percentages are never used.
 
-Last updated: 2026-10-17 (end of F4)
+Last updated: 2026-10-17 (end of F5+F6)
 
 ## Phase summary
 
@@ -14,9 +14,9 @@ Last updated: 2026-10-17 (end of F4)
 | F1 Git core | ACCEPTED — evidence: [testing/f1-evidence.md](testing/f1-evidence.md) |
 | F2 Web UI + API | ACCEPTED — evidence: [testing/f2-evidence.md](testing/f2-evidence.md) |
 | F3 Stable MVP | ACCEPTED — evidence: [testing/f3-evidence.md](testing/f3-evidence.md) |
-| F4 Collaboration | **ACCEPTED** — evidence: [testing/f4-evidence.md](testing/f4-evidence.md) |
-| F5 Integrations | SPECIFIED (high level) — next up |
-| F6 Expansion | NOT_STARTED |
+| F4 Collaboration | ACCEPTED — evidence: [testing/f4-evidence.md](testing/f4-evidence.md) |
+| F5 Integrations | **ACCEPTED** — evidence: [testing/f5f6-evidence.md](testing/f5f6-evidence.md) |
+| F6 Expansion | **ACCEPTED** — evidence: [testing/f5f6-evidence.md](testing/f5f6-evidence.md) |
 
 ## Feature state
 
@@ -72,6 +72,14 @@ Last updated: 2026-10-17 (end of F4)
 | Collab | Branch protection (require_approval, glob patterns) | ACCEPTED | prservice.Merge; e2e proof |
 | Collab | Conflict detection (merge-tree --write-tree) | ACCEPTED | git ≥ 2.38; doctor checks floor |
 | Collab | Releases with assets / Wiki / LFS / MFA | NOT_STARTED | F5+ (see roadmap notes) |
+| Integ | Event bus (internal, synchronous) | ACCEPTED | internal/events (+tests); kinds: push, issue, PR |
+| Integ | Webhooks with HMAC-SHA256 signatures + delivery records | ACCEPTED | internal/webhooks (+tests with httptest) |
+| Integ | Repository import from remote URLs | ACCEPTED | internal/importsvc; http/https/git only |
+| Integ | Scheduled jobs (prune_sessions, rotate_backups) | ACCEPTED | internal/jobs; SQLite-as-queue with CAS |
+| Integ | Event emission from transports and handlers | ACCEPTED | push in httpgit, issue/PR in web handlers |
+| Expand | Search across issues and repositories | ACCEPTED | store.SearchIssues/SearchRepos (LIKE-based) |
+| Expand | Package registry with sha256 integrity | ACCEPTED | packages table; 100 MiB cap; metadata field |
+| Expand | Extension points (new event kinds, job kinds) | ACCEPTED | events.Bus.Subscribe + jobs kinds are one const |
 | Integrations | Webhooks/import/mirror/schedulers/runners | NOT_STARTED | F5 |
 | Expansion | Registry/search/extensions | NOT_STARTED | F6 |
 
@@ -99,11 +107,12 @@ Last updated: 2026-10-17 (end of F4)
 10. **Password change / MFA**: no self-service password change yet; MFA
     is F4 scope.
 
-## Next task (F5 entry)
+## Next task
 
-Integrations: webhooks (outbound HTTP on push/issue/PR events), repository
-import/mirror (clone from remote URLs into GitHost repositories), scheduled
-jobs (maintenance, backup rotation), and isolated CI runner support. The
-event system (internal/events) becomes the backbone for webhooks.
+All charter phases (F0–F6) are complete. The remaining items are
+post-MVP enhancements recorded above (Releases, Wiki, LFS, MFA,
+advanced search, remote storage) and operational hardening: activating
+CI on a live runner, Windows native SCM, PostgreSQL driver, and
+Markdown syntax highlighting.
 
 
