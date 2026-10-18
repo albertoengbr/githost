@@ -82,11 +82,23 @@ no known critical vulnerabilities in the implemented flows; the
 platform story advanced (linux/amd64 container-validated) without
 overclaiming support.
 
-## F4 — Collaboration
+## F4 — Collaboration (ACCEPTED)
 
-Issues, pull requests with reviews and merges, branch protection,
-releases with assets, wiki, Git LFS (only after full protocol testing),
-MFA.
+Delivered and verified (evidence: docs/testing/f4-evidence.md): safe
+Markdown rendering (goldmark with XSS corpus tests — raw HTML omitted,
+dangerous link schemes stripped); issues with Markdown bodies, comments,
+close/reopen, labels, assignees and full event history; pull requests
+with commit listing, diff display and conflict detection (merge-tree
+--write-tree); reviews with approve/reject/comment (latest verdict per
+reviewer wins); three merge strategies (merge-commit, squash,
+fast-forward-only) executed through git plumbing (commit-tree +
+update-ref with CAS); branch protection rules with glob patterns and
+approval gates enforced at the single merge entry point. The
+collaboration e2e gate proves the full workflow: issue → PR →
+review → protection → merge → clean fsck.
+
+Releases with assets, Git-backed Wiki, Git LFS and MFA are deferred to
+F5/F6 (recorded in status.md).
 
 ## F5 — Integrations
 

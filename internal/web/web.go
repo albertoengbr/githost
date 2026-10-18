@@ -16,7 +16,6 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
@@ -184,7 +183,6 @@ func (h *Handler) render(w http.ResponseWriter, status int, page string, data an
 	if err := tmpl.ExecuteTemplate(w, "layout", data); err != nil {
 		// Headers are already sent; log and stop.
 		h.logger.Error("template_render_failed", "template", page, "err", err)
-		fmt.Fprintf(os.Stderr, "TEMPLATE RENDER FAILED: %s: %v\n", page, err)
 	}
 }
 

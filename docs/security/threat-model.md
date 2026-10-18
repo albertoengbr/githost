@@ -49,8 +49,8 @@ docs/testing/f1-evidence.md §4):
 | T2 | **Path traversal** | IMPLEMENTED+TESTED: UUID-addressed storage with re-validated joins, httpgit.Guard rejects dot segments (400), SSH path grammar resolves owner/name through the store only |
 | T3 | **Private repository exposure** | IMPLEMENTED+TESTED: authorization before any git process on both transports; anonymous → 401, stranger → 404, insufficient level → 403; negative e2e on both transports |
 | T4 | **SSH shell escape / arbitrary exec** | IMPLEMENTED+TESTED: public-key-only auth, session channels only, shell/PTY/subsystem refused, single allowed command grammar, all tested with raw ssh probes |
-| T5 | **Hook smuggling** through pushed content | NOT NEEDED YET: GitHost installs no hooks in F1 (none exist to trust); hooks arrive only in F4 under platform control. Repo content is inert data. |
-| T6 | **Credential theft** over cleartext HTTP | **IMPLEMENTED+TESTED**: token-only auth (hash-stored, revocable, scoped); native TLS serving (F3) with fail-fast certificate checks � reverse proxy remains an option |
+| T5 | **Hook smuggling** through pushed content | IMPLEMENTED: GitHost installs no hooks; branch protection is enforced in the application layer (prservice.Merge — single entry point), never through pushed repo content. merge-tree/commit-tree/update-ref are platform-invoked only. |
+| T6 | **Credential theft** over cleartext HTTP | **IMPLEMENTED+TESTED**: token-only auth (hash-stored, revocable, scoped); native TLS serving (F3) with fail-fast certificate checks � reverse proxy remains an option |
 | T7 | **Resource exhaustion** via giant pushes/fetches | **IMPLEMENTED+TESTED**: hard timeout on every git invocation plus configurable receive.maxInputSize (limits.max_push_bytes, default 512 MiB) enforced by git and the HTTP layer; connection caps remain future work |
 | T8 | **Environment injection** to git subprocess | IMPLEMENTED+TESTED: environment rebuilt from an allowlist, GIT_CONFIG_NOSYSTEM/GIT_CONFIG_GLOBAL neutralization (host-config leak unit-tested), GIT_PROTOCOL allowlisted with value validation, `-c` settings strictly validated |
 

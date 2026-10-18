@@ -4,7 +4,7 @@
 IMPLEMENTING, TESTING, BLOCKED, ACCEPTED. Evidence is required for
 ACCEPTED; percentages are never used.
 
-Last updated: 2026-10-17 (end of F3)
+Last updated: 2026-10-17 (end of F4)
 
 ## Phase summary
 
@@ -13,9 +13,9 @@ Last updated: 2026-10-17 (end of F3)
 | F0 Foundation | ACCEPTED — evidence: [testing/f0-evidence.md](testing/f0-evidence.md) |
 | F1 Git core | ACCEPTED — evidence: [testing/f1-evidence.md](testing/f1-evidence.md) |
 | F2 Web UI + API | ACCEPTED — evidence: [testing/f2-evidence.md](testing/f2-evidence.md) |
-| F3 Stable MVP | **ACCEPTED** — evidence: [testing/f3-evidence.md](testing/f3-evidence.md) |
-| F4 Collaboration | SPECIFIED (high level) — next up |
-| F5 Integrations | NOT_STARTED |
+| F3 Stable MVP | ACCEPTED — evidence: [testing/f3-evidence.md](testing/f3-evidence.md) |
+| F4 Collaboration | **ACCEPTED** — evidence: [testing/f4-evidence.md](testing/f4-evidence.md) |
+| F5 Integrations | SPECIFIED (high level) — next up |
 | F6 Expansion | NOT_STARTED |
 
 ## Feature state
@@ -64,7 +64,14 @@ Last updated: 2026-10-17 (end of F3)
 | Ops | systemd (hardened) / launchd / rc.d units | ACCEPTED | packaging/; guarded by tests/packaging_test.go |
 | Ops | CI workflow (matrix + race + package) | ACCEPTED (defined) | .github/workflows/ci.yml; YAML-drift test |
 | Ops | Backup/restore | NOT_STARTED | F3 |
-| Collab | Issues / PRs / releases / wiki / LFS / MFA | NOT_STARTED | F4 |
+| Collab | Safe Markdown rendering (goldmark, XSS corpus tested) | ACCEPTED | internal/markdown (+tests) |
+| Collab | Issues: create/comment/close/reopen, labels, history | ACCEPTED | store/issues.go, web/handlers_collab.go |
+| Collab | Pull Requests: create/detail with commits+diff+conflicts | ACCEPTED | internal/prservice (+e2e) |
+| Collab | PR reviews (approve/reject/comment) | ACCEPTED | prservice.Review; latest verdict wins |
+| Collab | Merge: 3 strategies (merge-commit/squash/ff-only) | ACCEPTED | git/merge.go plumbing; CAS on update-ref |
+| Collab | Branch protection (require_approval, glob patterns) | ACCEPTED | prservice.Merge; e2e proof |
+| Collab | Conflict detection (merge-tree --write-tree) | ACCEPTED | git ≥ 2.38; doctor checks floor |
+| Collab | Releases with assets / Wiki / LFS / MFA | NOT_STARTED | F5+ (see roadmap notes) |
 | Integrations | Webhooks/import/mirror/schedulers/runners | NOT_STARTED | F5 |
 | Expansion | Registry/search/extensions | NOT_STARTED | F6 |
 
@@ -92,14 +99,11 @@ Last updated: 2026-10-17 (end of F3)
 10. **Password change / MFA**: no self-service password change yet; MFA
     is F4 scope.
 
-## Next task (F4 entry)
+## Next task (F5 entry)
 
-Collaboration features: Issues (with Markdown rendering, labels,
-assignees, history), Pull Requests (branch comparison, reviews with
-approve/reject, merge strategies, conflict detection), branch protection
-enforced by platform-installed receive hooks, Releases with assets,
-Git-backed Wiki — followed by Git LFS and MFA. Design notes and merge
-strategies need their specification before implementation begins
-(spec §13).
+Integrations: webhooks (outbound HTTP on push/issue/PR events), repository
+import/mirror (clone from remote URLs into GitHost repositories), scheduled
+jobs (maintenance, backup rotation), and isolated CI runner support. The
+event system (internal/events) becomes the backbone for webhooks.
 
 
