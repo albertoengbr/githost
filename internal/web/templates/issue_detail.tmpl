@@ -1,7 +1,7 @@
 {{define "content"}}
 {{$owner := .Repo.Owner}}{{$name := .Repo.Name}}
 <div class="repo-head">
-  <h1><a href="/{{$owner}}">{{$owner}}">{{$owner}}</a> / <a href="/{{$owner}}/{{$name}}">{{$name}}</a>
+  <h1><a href="/{{$owner}}">{{$owner}}</a> / <a href="/{{$owner}}/{{$name}}">{{$name}}</a>
     · <a href="/{{$owner}}/{{$name}}/issues">Issues</a> · #{{.Issue.Number}}</h1>
 </div>
 

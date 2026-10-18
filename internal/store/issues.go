@@ -45,10 +45,14 @@ const issueJoins = ` FROM issues i
 func scanIssue(row interface{ Scan(...any) error }) (*Issue, error) {
 	var it Issue
 	var created, updated string
+	var assigneeID sql.NullInt64
 	err := row.Scan(&it.ID, &it.RepositoryID, &it.Number, &it.Title, &it.BodyMD, &it.State,
-		&it.AuthorID, &it.Author, &it.AssigneeID, &it.Assignee, &created, &updated)
+		&it.AuthorID, &it.Author, &assigneeID, &it.Assignee, &created, &updated)
 	if err != nil {
 		return nil, err
+	}
+	if assigneeID.Valid {
+		it.AssigneeID = assigneeID.Int64
 	}
 	it.CreatedAt = parseTime(created)
 	it.UpdatedAt = parseTime(updated)

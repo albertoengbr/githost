@@ -1,6 +1,7 @@
 package web
 
 import (
+	"html/template"
 	"net/http"
 	"strconv"
 	"strings"
@@ -14,18 +15,19 @@ import (
 type issueView struct {
 	Number       int64
 	Title        string
-	BodyHTML     string
+	BodyHTML     template.HTML
 	State        string
 	Author       string
 	Assignee     string
 	CreatedAt    string
 	CommentCount int
+	Labels       []store.Label
 }
 
 // issueCommentView for the comment thread.
 type issueCommentView struct {
 	Author    string
-	BodyHTML  string
+	BodyHTML  template.HTML
 	CreatedAt string
 }
 
@@ -37,10 +39,11 @@ func issueToView(it *store.Issue) issueView {
 		Author:       it.Author,
 		Assignee:     it.Assignee,
 		CommentCount: it.CommentCount,
+		Labels:       it.Labels,
 	}
 	v.CreatedAt = it.CreatedAt.Format("2006-01-02 15:04")
 	if html, err := markdown.Render(it.BodyMD); err == nil {
-		v.BodyHTML = string(html)
+		v.BodyHTML = html
 	}
 	return v
 }
@@ -48,7 +51,7 @@ func issueToView(it *store.Issue) issueView {
 func commentToView(c *store.IssueComment) issueCommentView {
 	v := issueCommentView{Author: c.Author, CreatedAt: c.CreatedAt.Format("2006-01-02 15:04")}
 	if html, err := markdown.Render(c.BodyMD); err == nil {
-		v.BodyHTML = string(html)
+		v.BodyHTML = html
 	}
 	return v
 }
@@ -275,7 +278,7 @@ func (h *Handler) issueToggleLabel(w http.ResponseWriter, r *http.Request) {
 type pullView struct {
 	Number      int64
 	Title       string
-	BodyHTML    string
+	BodyHTML    template.HTML
 	State       string
 	Base, Head  string
 	Author      string
@@ -291,7 +294,7 @@ func pullToView(p *store.PullRequest) pullView {
 	}
 	v.CreatedAt = p.CreatedAt.Format("2006-01-02 15:04")
 	if html, err := markdown.Render(p.BodyMD); err == nil {
-		v.BodyHTML = string(html)
+		v.BodyHTML = html
 	}
 	return v
 }
@@ -401,15 +404,19 @@ func (h *Handler) pullDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var reviews []struct {
-		Reviewer, Verdict, BodyHTML, When string
+		Reviewer, Verdict string
+		BodyHTML          template.HTML
+		When              string
 	}
 	for _, rev := range detail.Reviews {
-		bodyHTML := ""
+		var bodyHTML template.HTML
 		if html, err := markdown.Render(rev.BodyMD); err == nil {
-			bodyHTML = string(html)
+			bodyHTML = html
 		}
 		reviews = append(reviews, struct {
-			Reviewer, Verdict, BodyHTML, When string
+			Reviewer, Verdict string
+			BodyHTML          template.HTML
+			When              string
 		}{rev.Reviewer, rev.Verdict, bodyHTML, rev.CreatedAt.Format("2006-01-02 15:04")})
 	}
 	var comments []issueCommentView
@@ -434,11 +441,15 @@ func (h *Handler) pullDetail(w http.ResponseWriter, r *http.Request) {
 
 	data := struct {
 		pageData
-		Repo      repoView
-		PR        pullView
-		Commits   []git.Commit
-		Diff      string
-		Reviews   []struct{ Reviewer, Verdict, BodyHTML, When string }
+		Repo    repoView
+		PR      pullView
+		Commits []git.Commit
+		Diff    string
+		Reviews []struct {
+			Reviewer, Verdict string
+			BodyHTML          template.HTML
+			When              string
+		}
 		Comments  []issueCommentView
 		Conflicts []string
 		Rules     []struct {
