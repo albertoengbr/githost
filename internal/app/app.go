@@ -20,8 +20,10 @@ import (
 	"githost.dev/githost/internal/config"
 	"githost.dev/githost/internal/csrf"
 	"githost.dev/githost/internal/database"
+	"githost.dev/githost/internal/events"
 	"githost.dev/githost/internal/git"
 	"githost.dev/githost/internal/httpserver"
+	"githost.dev/githost/internal/jobs"
 	"githost.dev/githost/internal/lock"
 	"githost.dev/githost/internal/permissions"
 	"githost.dev/githost/internal/prservice"
@@ -34,6 +36,7 @@ import (
 	"githost.dev/githost/internal/transport/httpgit"
 	"githost.dev/githost/internal/transport/sshgit"
 	"githost.dev/githost/internal/web"
+	"githost.dev/githost/internal/webhooks"
 	"githost.dev/githost/migrations"
 )
 
@@ -149,6 +152,13 @@ func Start(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*Serve
 	perms := permissions.New(metadata)
 	pulls := prservice.New(metadata, repos, executor)
 
+	// F5: event bus + webhooks + scheduled jobs.
+	eventBus := events.New(logger)
+	webhookDeliverer := webhooks.New(metadata, logger)
+	webhookDeliverer.SubscribeHooks(eventBus)
+	jobRunner := jobs.New(metadata, logger)
+	jobRunner.Start(ctx)
+
 	// F2: web interface prerequisites. The instance secret signs CSRF
 	// tokens; login throttling is per-process (single-instance design).
 	secret, err := InstanceSecret(cfg)
@@ -176,6 +186,7 @@ func Start(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*Serve
 				Limiter:  loginLimiter,
 				Logger:   logger,
 				Pulls:    pulls,
+				Events:   eventBus,
 			}); err != nil {
 				registerErr = err
 				return
@@ -194,6 +205,7 @@ func Start(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*Serve
 				Git:          executor,
 				Logger:       logger,
 				MaxPushBytes: cfg.Limits.MaxPushBytes,
+				Events:       eventBus,
 			})
 		},
 	})

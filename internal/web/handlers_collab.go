@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"githost.dev/githost/internal/events"
 	"githost.dev/githost/internal/git"
 	"githost.dev/githost/internal/markdown"
 	"githost.dev/githost/internal/store"
@@ -129,6 +130,17 @@ func (h *Handler) issueNewSubmit(w http.ResponseWriter, r *http.Request) {
 		h.render(w, http.StatusBadRequest, "issue_new.tmpl", data)
 		return
 	}
+
+	// F5: emit issue.opened event.
+	if h.deps.Events != nil {
+		h.deps.Events.Emit(r.Context(), events.Event{
+			Kind:       events.KindIssueOpened,
+			Repository: rc.repo.Owner + "/" + rc.repo.Name,
+			Actor:      su.User.Username,
+			Detail:     `{"number":` + strconv.FormatInt(issue.Number, 10) + `,"title":` + strconv.Quote(issue.Title) + `}`,
+		})
+	}
+
 	http.Redirect(w, r, "/"+rc.repo.Owner+"/"+rc.repo.Name+"/issues/"+strconv.FormatInt(issue.Number, 10),
 		http.StatusSeeOther)
 }
@@ -379,6 +391,17 @@ func (h *Handler) pullNewSubmit(w http.ResponseWriter, r *http.Request) {
 		h.render(w, http.StatusBadRequest, "pull_new.tmpl", data)
 		return
 	}
+
+	// F5: emit pr.opened event.
+	if h.deps.Events != nil {
+		h.deps.Events.Emit(r.Context(), events.Event{
+			Kind:       events.KindPROpened,
+			Repository: rc.repo.Owner + "/" + rc.repo.Name,
+			Actor:      su.User.Username,
+			Detail:     `{"number":` + strconv.FormatInt(pr.Number, 10) + `,"base":"` + pr.BaseBranch + `","head":"` + pr.HeadBranch + `"}`,
+		})
+	}
+
 	http.Redirect(w, r, "/"+rc.repo.Owner+"/"+rc.repo.Name+"/pulls/"+strconv.FormatInt(pr.Number, 10),
 		http.StatusSeeOther)
 }
@@ -556,10 +579,20 @@ func (h *Handler) pullMerge(w http.ResponseWriter, r *http.Request) {
 		pd, _, _ := h.pageData(r)
 		pd.Flash = err.Error()
 		pd.FlashKind = "err"
-		// Re-render the detail with the error.
 		http.Redirect(w, r, "/"+rc.repo.Owner+"/"+rc.repo.Name+"/pulls/"+strconv.FormatInt(number, 10)+"?msg=err-merge", http.StatusSeeOther)
 		return
 	}
+
+	// F5: emit pr.merged event.
+	if h.deps.Events != nil {
+		h.deps.Events.Emit(r.Context(), events.Event{
+			Kind:       events.KindPRMerged,
+			Repository: rc.repo.Owner + "/" + rc.repo.Name,
+			Actor:      su.User.Username,
+			Detail:     `{"number":` + strconv.FormatInt(number, 10) + `,"strategy":"` + strategy + `"}`,
+		})
+	}
+
 	http.Redirect(w, r, "/"+rc.repo.Owner+"/"+rc.repo.Name+"/pulls/"+strconv.FormatInt(number, 10), http.StatusSeeOther)
 }
 

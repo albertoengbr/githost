@@ -52,8 +52,8 @@ func TestMigrateAppliesAndIsIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Migrate: %v", err)
 	}
-	if len(ran) != 3 || ran[0] != 1 || ran[1] != 2 || ran[2] != 3 {
-		t.Fatalf("first run applied %v, want [1 2 3]", ran)
+	if len(ran) != 4 || ran[0] != 1 || ran[1] != 2 || ran[2] != 3 || ran[3] != 4 {
+		t.Fatalf("first run applied %v, want [1 2 3 4]", ran)
 	}
 
 	ran2, err := Migrate(ctx, db, migrations.FS)
@@ -76,8 +76,8 @@ func TestMigrateAppliesAndIsIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AppliedCount: %v", err)
 	}
-	if count != 3 {
-		t.Fatalf("applied count = %d, want 3", count)
+	if count != 4 {
+		t.Fatalf("applied count = %d, want 4", count)
 	}
 }
 

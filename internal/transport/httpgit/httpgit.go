@@ -21,6 +21,7 @@ import (
 	"sync"
 
 	"githost.dev/githost/internal/auth"
+	"githost.dev/githost/internal/events"
 	"githost.dev/githost/internal/git"
 	"githost.dev/githost/internal/permissions"
 	"githost.dev/githost/internal/reposervice"
@@ -36,6 +37,8 @@ type Deps struct {
 	Logger *slog.Logger
 	// MaxPushBytes caps receive-pack input (limits.max_push_bytes).
 	MaxPushBytes int64
+	// Events is the instance event bus (F5); nil disables push events.
+	Events *events.Bus
 }
 
 // serviceSpec describes one Smart HTTP service.
@@ -364,6 +367,16 @@ func (h *handler) handleService(w http.ResponseWriter, r *http.Request) {
 	if err := h.deps.Store.Audit(r.Context(), actor, spec.auditOn,
 		acc.repo.Owner+"/"+acc.repo.Name, "via https"); err != nil {
 		h.deps.Logger.Error("audit_failed", "err", err)
+	}
+
+	// F5: emit push/fetch events for webhook consumers.
+	if h.deps.Events != nil && spec.push {
+		h.deps.Events.Emit(r.Context(), events.Event{
+			Kind:       events.KindPush,
+			Repository: acc.repo.Owner + "/" + acc.repo.Name,
+			Actor:      acc.user.Username,
+			Detail:     `{"transport":"https"}`,
+		})
 	}
 }
 

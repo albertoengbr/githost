@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"githost.dev/githost/internal/csrf"
+	"githost.dev/githost/internal/events"
 	"githost.dev/githost/internal/git"
 	"githost.dev/githost/internal/permissions"
 	"githost.dev/githost/internal/prservice"
@@ -48,6 +49,8 @@ type Deps struct {
 	// Pulls is the PR service; nil disables the PR pages (only used
 	// in tests that don't need collaboration features).
 	Pulls *prservice.Service
+	// Events is the instance event bus (F5); nil disables event emission.
+	Events *events.Bus
 }
 
 // Handler serves the web UI.
