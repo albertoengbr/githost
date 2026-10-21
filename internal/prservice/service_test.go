@@ -2,6 +2,7 @@ package prservice
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -203,12 +204,76 @@ func TestPRRejectionBlocksMerge(t *testing.T) {
 	if _, err := f.svc.Review(ctx, pr, f.bob, store.ReviewReject, "needs work"); err != nil {
 		t.Fatal(err)
 	}
-	// Alice approves (but bob's reject is the latest verdict for bob).
-	if _, err := f.svc.Review(ctx, pr, f.alice, store.ReviewApprove, "i approve mine"); err != nil {
-		t.Fatal(err)
+	// Alice (the author) cannot approve her own pull request.
+	if _, err := f.svc.Review(ctx, pr, f.alice, store.ReviewApprove, "i approve mine"); !errors.Is(err, ErrSelfReview) {
+		t.Fatalf("author self-approval: got err %v, want ErrSelfReview", err)
 	}
 	if _, err := f.svc.Merge(ctx, f.repo, pr, f.alice, "merge-commit"); err == nil {
 		t.Fatal("merge accepted with an outstanding rejection")
+	}
+}
+
+func TestAuthorCannotApproveOwnPR(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+
+	pr, err := f.svc.Create(ctx, f.repo, f.alice, "Solo feature", "", "main", "dev")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.st.AddBranchRule(ctx, store.BranchRule{
+		RepositoryID:    f.repo.ID,
+		Pattern:         "main",
+		RequireApproval: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// The author cannot satisfy RequireApproval on their own PR…
+	if _, err := f.svc.Review(ctx, pr, f.alice, store.ReviewApprove, "self lgtm"); !errors.Is(err, ErrSelfReview) {
+		t.Fatalf("author self-approval: got err %v, want ErrSelfReview", err)
+	}
+	if _, err := f.svc.Merge(ctx, f.repo, pr, f.alice, "merge-commit"); !errors.Is(err, ErrBranchProtection) {
+		t.Fatalf("merge without any approval: got err %v, want ErrBranchProtection", err)
+	}
+	// …but a genuine reviewer's approval unblocks it.
+	if _, err := f.svc.Review(ctx, pr, f.bob, store.ReviewApprove, "lgtm"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.svc.Merge(ctx, f.repo, pr, f.alice, "merge-commit"); err != nil {
+		t.Fatalf("merge with bob's approval: %v", err)
+	}
+}
+
+func TestReviewReplacesPreviousVerdict(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+
+	pr, err := f.svc.Create(ctx, f.repo, f.alice, "Flip flop", "", "main", "dev")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.svc.Review(ctx, pr, f.bob, store.ReviewApprove, "lgtm"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.svc.Review(ctx, pr, f.bob, store.ReviewReject, "on second thought"); err != nil {
+		t.Fatal(err)
+	}
+	reviews, err := f.st.PullRequestReviews(ctx, pr.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(reviews) != 1 {
+		t.Fatalf("got %d review rows for one reviewer, want 1 (upsert)", len(reviews))
+	}
+	if reviews[0].Verdict != store.ReviewReject {
+		t.Fatalf("verdict = %q, want the latest verdict %q", reviews[0].Verdict, store.ReviewReject)
+	}
+	approvals, rejections, err := f.st.ApprovalState(ctx, pr.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if approvals != 0 || rejections != 1 {
+		t.Fatalf("approval state = (%d, %d), want (0, 1)", approvals, rejections)
 	}
 }
 

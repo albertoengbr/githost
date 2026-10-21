@@ -88,6 +88,14 @@ func (s *Store) DeleteWebhook(ctx context.Context, repoID, hookID int64) error {
 	return err
 }
 
+// SetWebhookActive toggles a webhook without deleting its history.
+func (s *Store) SetWebhookActive(ctx context.Context, repoID, hookID int64, active bool) error {
+	_, err := s.db.ExecContext(ctx,
+		"UPDATE webhooks SET active = ? WHERE id = ? AND repository_id = ?",
+		boolToInt(active), hookID, repoID)
+	return err
+}
+
 // RecordWebhookDelivery stores one delivery attempt.
 func (s *Store) RecordWebhookDelivery(ctx context.Context, hookID int64, event, payload string, statusCode int, success bool) error {
 	_, err := s.db.ExecContext(ctx,
@@ -196,6 +204,19 @@ func (s *Store) FinishJob(ctx context.Context, id int64, failed bool, detail str
 	return err
 }
 
+// RequeueStaleRunningJobs moves jobs stuck in the running state back to
+// pending. The server holds the exclusive instance lock, so a running
+// row at startup is a leftover from a killed previous run. Returns the
+// number of rows requeued.
+func (s *Store) RequeueStaleRunningJobs(ctx context.Context) (int64, error) {
+	res, err := s.db.ExecContext(ctx,
+		"UPDATE jobs SET status = 'pending' WHERE status = 'running'")
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
 // ---------------------------------------------------------- repo import
 
 // ImportRepository clones a remote Git URL into a new GitHost repository.
@@ -262,6 +283,39 @@ func (s *Store) SearchRepos(ctx context.Context, query string, limit int) ([]*Re
 			" WHERE r.name LIKE '%' || ? || '%' OR r.description LIKE '%' || ? || '%'"+
 			" ORDER BY r.updated_at DESC LIMIT ?",
 		query, query, limit)
+}
+
+// SearchIssuesAllRepos finds issues matching the query across every
+// repository, filling Repo with "owner/name" so callers can apply
+// per-repository authorization (visibility is NOT filtered here).
+func (s *Store) SearchIssuesAllRepos(ctx context.Context, query string, limit int) ([]SearchResult, error) {
+	if query == "" || limit <= 0 || limit > 100 {
+		limit = 50
+	}
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT u.username, r.name, i.number, i.title, i.state, substr(i.body_md, 1, 200)
+		 FROM issues i
+		 JOIN repositories r ON r.id = i.repository_id
+		 JOIN users u ON u.id = r.owner_id
+		 WHERE i.title LIKE '%' || ? || '%' OR i.body_md LIKE '%' || ? || '%'
+		 ORDER BY i.id DESC LIMIT ?`,
+		query, query, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var results []SearchResult
+	for rows.Next() {
+		var r SearchResult
+		var owner, name string
+		r.Kind = "issue"
+		if err := rows.Scan(&owner, &name, &r.Number, &r.Title, &r.State, &r.Snippet); err != nil {
+			return nil, err
+		}
+		r.Repo = owner + "/" + name
+		results = append(results, r)
+	}
+	return results, rows.Err()
 }
 
 // ------------------------------------------------------------------ packages

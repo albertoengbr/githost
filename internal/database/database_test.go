@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"database/sql"
+	"io/fs"
 	"path/filepath"
 	"testing"
 	"testing/fstest"
@@ -48,12 +49,28 @@ func TestMigrateAppliesAndIsIdempotent(t *testing.T) {
 	db := openTestDB(t)
 	ctx := context.Background()
 
+	// Expected migration set is derived from the embedded files, so
+	// adding 0006_x.sql does not require touching this test.
+	entries, err := fs.Glob(migrations.FS, "*.sql")
+	if err != nil {
+		t.Fatalf("list embedded migrations: %v", err)
+	}
+	wantCount := len(entries)
+	if wantCount == 0 {
+		t.Fatal("no embedded migrations found")
+	}
+
 	ran, err := Migrate(ctx, db, migrations.FS)
 	if err != nil {
 		t.Fatalf("Migrate: %v", err)
 	}
-	if len(ran) != 4 || ran[0] != 1 || ran[1] != 2 || ran[2] != 3 || ran[3] != 4 {
-		t.Fatalf("first run applied %v, want [1 2 3 4]", ran)
+	if len(ran) != wantCount {
+		t.Fatalf("first run applied %d migrations (%v), want %d", len(ran), ran, wantCount)
+	}
+	for i, v := range ran {
+		if v != int64(i+1) {
+			t.Fatalf("first run applied %v, want sequential versions 1..%d", ran, wantCount)
+		}
 	}
 
 	ran2, err := Migrate(ctx, db, migrations.FS)
@@ -76,8 +93,8 @@ func TestMigrateAppliesAndIsIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AppliedCount: %v", err)
 	}
-	if count != 4 {
-		t.Fatalf("applied count = %d, want 4", count)
+	if count != wantCount {
+		t.Fatalf("applied count = %d, want %d", count, wantCount)
 	}
 }
 

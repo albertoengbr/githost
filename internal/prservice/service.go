@@ -27,6 +27,11 @@ var (
 
 	// ErrMergeConflict passes through the git error.
 	ErrMergeConflict = errors.New("merge conflict")
+
+	// ErrSelfReview means the PR author tried to approve or reject their
+	// own pull request. Comments are still allowed; verdicts are not —
+	// an author self-approval would satisfy RequireApproval rules.
+	ErrSelfReview = errors.New("the pull request author cannot approve or reject their own pull request")
 )
 
 // Service wires store, repository service and git executor.
@@ -118,11 +123,16 @@ func (s *Service) Detail(ctx context.Context, repo *store.Repository, number int
 	return detail, nil
 }
 
-// Review records a verdict.
+// Review records a verdict. The PR author may comment on their own pull
+// request but never approve or reject it: a self-approval would satisfy
+// RequireApproval branch protection on every single-actor repository.
 func (s *Service) Review(ctx context.Context, pr *store.PullRequest, reviewer *store.User,
 	verdict, body string) (*store.PullRequestReview, error) {
 	if pr.State != "open" {
 		return nil, ErrAlreadyMerged
+	}
+	if reviewer.ID == pr.AuthorID && verdict != store.ReviewComment {
+		return nil, ErrSelfReview
 	}
 	return s.store.AddPullRequestReview(ctx, pr.ID, reviewer.ID, verdict, body)
 }

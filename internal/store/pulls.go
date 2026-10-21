@@ -178,7 +178,9 @@ type PullRequestReview struct {
 	CreatedAt  time.Time
 }
 
-// AddPullRequestReview appends a review (approve/reject/comment).
+// AddPullRequestReview records a review (approve/reject/comment). A
+// reviewer's new verdict replaces their previous one (upsert) — approval
+// counting relies on one row per (pull, reviewer).
 func (s *Store) AddPullRequestReview(ctx context.Context, pullID, reviewerID int64, verdict, body string) (*PullRequestReview, error) {
 	switch verdict {
 	case ReviewApprove, ReviewReject, ReviewComment:
@@ -189,13 +191,20 @@ func (s *Store) AddPullRequestReview(ctx context.Context, pullID, reviewerID int
 		return nil, fmt.Errorf("review body exceeds size limit")
 	}
 	now := nowUTC()
-	res, err := s.db.ExecContext(ctx,
-		"INSERT INTO pull_request_reviews (pull_id, reviewer_id, verdict, body_md, created_at) VALUES (?, ?, ?, ?, ?)",
-		pullID, reviewerID, verdict, body, now)
-	if err != nil {
+	if _, err := s.db.ExecContext(ctx,
+		`INSERT INTO pull_request_reviews (pull_id, reviewer_id, verdict, body_md, created_at)
+		 VALUES (?, ?, ?, ?, ?)
+		 ON CONFLICT (pull_id, reviewer_id)
+		 DO UPDATE SET verdict = excluded.verdict, body_md = excluded.body_md, created_at = excluded.created_at`,
+		pullID, reviewerID, verdict, body, now); err != nil {
 		return nil, err
 	}
-	id, _ := res.LastInsertId()
+	var id int64
+	if err := s.db.QueryRowContext(ctx,
+		"SELECT id FROM pull_request_reviews WHERE pull_id = ? AND reviewer_id = ?",
+		pullID, reviewerID).Scan(&id); err != nil {
+		return nil, err
+	}
 	if _, err := s.db.ExecContext(ctx,
 		"UPDATE pull_requests SET updated_at = ? WHERE id = ?", now, pullID); err != nil {
 		return nil, err

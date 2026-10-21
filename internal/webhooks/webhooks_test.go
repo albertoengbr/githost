@@ -5,6 +5,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -65,11 +66,32 @@ func newFixture(t *testing.T) *fixture {
 	t.Cleanup(srv.Close)
 
 	return &fixture{
-		deliverer: New(st, nil),
+		deliverer: newWithClient(st, nil, &http.Client{Timeout: DeliveryTimeout}),
 		store:     st,
 		repo:      repo,
 		received:  received,
 		server:    srv,
+	}
+}
+
+// TestForbiddenWebhookIP pins the dial-time SSRF guard: loopback,
+// unspecified, link-local and multicast targets are never dialable.
+func TestForbiddenWebhookIP(t *testing.T) {
+	blocked := []string{
+		"127.0.0.1", "::1", "0.0.0.0", "::",
+		"169.254.1.1", "fe80::1", "224.0.0.1", "ff02::1",
+	}
+	for _, s := range blocked {
+		if !forbiddenWebhookIP(net.ParseIP(s)) {
+			t.Errorf("forbiddenWebhookIP(%s) = false, want true", s)
+		}
+	}
+	// Private LAN ranges stay allowed (internal CI is a legit target).
+	allowed := []string{"10.0.0.5", "192.168.1.10", "172.16.0.2"}
+	for _, s := range allowed {
+		if forbiddenWebhookIP(net.ParseIP(s)) {
+			t.Errorf("forbiddenWebhookIP(%s) = true, want false", s)
+		}
 	}
 }
 
