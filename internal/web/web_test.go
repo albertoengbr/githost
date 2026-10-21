@@ -367,8 +367,10 @@ func TestRepoCreateAndView(t *testing.T) {
 	h.seedRepoContent("alice", "my-project")
 
 	page = h.get("/alice/my-project")
-	if !strings.Contains(page, "# seeded project") {
-		t.Fatal("README not rendered on repo home")
+	// README.md renders as safe HTML (markdown-body), not raw text.
+	if !strings.Contains(page, "markdown-body") || !strings.Contains(page, "seeded project") ||
+		strings.Contains(page, "# seeded project") {
+		t.Fatalf("README not rendered on repo home:\n%s", page[:min(len(page), 400)])
 	}
 	if !strings.Contains(page, "seeded content") {
 		t.Fatal("latest commit subject missing")

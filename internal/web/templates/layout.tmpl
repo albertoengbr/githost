@@ -4,30 +4,48 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>GitHost{{if .Title}} · {{.Title}}{{end}}</title>
+<link rel="icon" href="/static/img/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/static/css/githost.css">
 </head>
 <body>
+<a class="skip-link" href="#main">Skip to content</a>
 <header class="topbar">
   <nav class="topbar-inner">
     <a class="brand" href="/">GitHost</a>
+    {{if .Username}}
+    <form class="topbar-search" method="get" action="/search" role="search">
+      <input type="search" name="q" placeholder="Search repositories and issues…" aria-label="Search">
+    </form>
+    {{end}}
     <div class="topbar-links">
       {{if .Username}}
         <a href="/new">New repository</a>
-        <a href="/settings/keys">SSH keys</a>
-        <a href="/settings/tokens">Tokens</a>
-        <span class="whoami">{{.Username}}</span>
-        <form method="post" action="/logout" class="inline-form">
-          <input type="hidden" name="csrf" value="{{.CSRF}}">
-          <button type="submit" class="linklike">Log out</button>
-        </form>
+        <details class="menu">
+          <summary class="whoami" aria-haspopup="menu">{{.Username}}</summary>
+          <div class="menu-body">
+            <a href="/new">New repository</a>
+            <a href="/settings/keys">SSH keys</a>
+            <a href="/settings/tokens">Tokens</a>
+            <a href="/settings/password">Password</a>
+            <a href="/settings/mfa">Two-factor</a>
+            <label class="theme-row" for="theme-toggle">
+              <input type="checkbox" id="theme-toggle">
+              Always dark theme
+            </label>
+            <form method="post" action="/logout" class="menu-form">
+              <input type="hidden" name="csrf" value="{{.CSRF}}">
+              <button type="submit" class="linklike">Log out</button>
+            </form>
+          </div>
+        </details>
       {{else}}
         <a href="/login">Log in</a>
       {{end}}
     </div>
   </nav>
 </header>
-<main class="content">
-  {{if .Flash}}<div class="flash flash-{{.FlashKind}}">{{.Flash}}</div>{{end}}
+<main class="content" id="main">
+  {{if .Flash}}<div class="flash flash-{{.FlashKind}}" role="status">{{.Flash}}</div>{{end}}
   {{template "content" .}}
 </main>
 <footer class="footer">GitHost — a lightweight self-hosted Git platform</footer>

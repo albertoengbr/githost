@@ -1,17 +1,6 @@
 {{define "content"}}
 {{$owner := .Repo.Owner}}{{$name := .Repo.Name}}
-<div class="repo-head">
-  <h1><a href="/{{$owner}}">{{$owner}}</a> / <a href="/{{$owner}}/{{$name}}">{{$name}}</a>
-    {{if eq .Repo.Visibility "private"}}<span class="badge badge-private">private</span>{{end}}
-  </h1>
-</div>
-<nav class="tabs">
-  <a class="tab" href="/{{$owner}}/{{$name}}">Code</a>
-  <a class="tab" href="/{{$owner}}/{{$name}}/commits">Commits</a>
-  <a class="tab" href="/{{$owner}}/{{$name}}/branches">Branches</a>
-  <a class="tab" href="/{{$owner}}/{{$name}}/tags">Tags</a>
-  <span class="tab active">Settings</span>
-</nav>
+{{template "repo-head" .}}
 
 <div class="card">
   <h2>Repository settings</h2>
@@ -40,6 +29,17 @@
     </label>
     <button type="submit">Save settings</button>
   </form>
+</div>
+
+<div class="settings-grid">
+  <a class="settings-link" href="/{{$owner}}/{{$name}}/settings/labels">
+    <strong>Labels</strong>
+    <span class="muted">Organize issues with colored labels.</span>
+  </a>
+  <a class="settings-link" href="/{{$owner}}/{{$name}}/settings/webhooks">
+    <strong>Webhooks</strong>
+    <span class="muted">Deliver push, issue and pull events to external services.</span>
+  </a>
 </div>
 
 <div class="card danger-zone">

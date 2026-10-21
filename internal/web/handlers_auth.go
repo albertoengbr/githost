@@ -97,13 +97,40 @@ func (h *Handler) loginSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.deps.Limiter.Reset(key)
+
+	// MFA state must fail closed: a database error here must never skip
+	// the second factor.
+	mfaEnabled, err := h.deps.Store.IsMFAEnabled(r.Context(), user.ID)
+	if err != nil {
+		h.logger.Error("mfa_state_lookup_failed", "err", err)
+		fail(http.StatusInternalServerError, "Login failed; try again.")
+		return
+	}
+
 	token, err := h.deps.Sessions.Start(r.Context(), user.ID, clientIP(r), r.UserAgent())
 	if err != nil {
 		h.logger.Error("session_start_failed", "err", err)
 		fail(http.StatusInternalServerError, "Login failed; try again.")
 		return
 	}
-	session.SetCookie(w, r, token, 0)
+	// The cookie lives as long as the server-side session.
+	session.SetCookie(w, r, token, int(session.DefaultTTL.Seconds()))
+
+	if mfaEnabled {
+		// The session exists but is parked as mfa_pending: requireSession
+		// refuses every page except the challenge until the code clears it.
+		if err := h.deps.Sessions.MarkMFAPending(r.Context(), token, true); err != nil {
+			h.logger.Error("mfa_pending_flag_failed", "err", err)
+			// Fail closed: drop the session we just created.
+			_ = h.deps.Sessions.End(r.Context(), token)
+			session.ClearCookie(w, r)
+			fail(http.StatusInternalServerError, "Login failed; try again.")
+			return
+		}
+		_ = h.deps.Store.Audit(r.Context(), &user.ID, "auth.login_mfa_pending", user.Username, "web")
+		http.Redirect(w, r, "/mfa/challenge", http.StatusSeeOther)
+		return
+	}
 	_ = h.deps.Store.Audit(r.Context(), &user.ID, "auth.login", user.Username, "web")
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }

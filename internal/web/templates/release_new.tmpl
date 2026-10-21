@@ -1,0 +1,29 @@
+{{define "content"}}
+{{$owner := .Repo.Owner}}{{$name := .Repo.Name}}
+{{template "repo-head" .}}
+
+<div class="card narrow">
+  <h2>New release</h2>
+  {{if .FormError}}<div class="flash flash-err">{{.FormError}}</div>{{end}}
+  {{if .Tags}}
+  <form method="post" action="/{{$owner}}/{{$name}}/releases/new">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <label>Tag
+      <select name="tag" required>
+        {{range .Tags}}<option value="{{.Short}}">{{.Short}}</option>{{end}}
+      </select>
+    </label>
+    <label>Title
+      <input name="name" maxlength="200" placeholder="v1.0 — first stable">
+    </label>
+    <label>Release notes (Markdown)
+      <textarea name="notes" rows="8" placeholder="## What changed&#10;- feature A&#10;- bugfix B"></textarea>
+    </label>
+    <label class="checkbox"><input type="checkbox" name="draft" value="1"> Draft (visible to managers only)</label>
+    <button type="submit">Publish release</button>
+  </form>
+  {{else}}
+  {{template "empty-state" (dict "Icon" "🏷️" "Title" "No tags yet" "Message" "Push a tag first (git tag v1.0 && git push origin v1.0), then draft a release from it.")}}
+  {{end}}
+</div>
+{{end}}

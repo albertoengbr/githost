@@ -18,7 +18,8 @@
   </li>
   {{end}}
 </ul>
+{{template "pager" (dict "HasPrev" (gt .Page 1) "HasMore" .HasMore "PrevPage" (Sub .Page 1) "NextPage" (Add .Page 1) "PageURL" .PageURL)}}
 {{else}}
-<p class="muted">No repositories yet.</p>
+{{template "empty-state" (dict "Icon" "📦" "Title" "No repositories yet" "Message" "Create a repository to start pushing code.")}}
 {{end}}
 {{end}}

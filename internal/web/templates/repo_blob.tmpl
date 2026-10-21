@@ -1,29 +1,28 @@
 {{define "content"}}
 {{$owner := .Repo.Owner}}{{$name := .Repo.Name}}
-<div class="repo-head">
-  <h1><a href="/{{$owner}}">{{$owner}}</a> / <a href="/{{$owner}}/{{$name}}">{{$name}}</a>
-    {{if eq .Repo.Visibility "private"}}<span class="badge badge-private">private</span>{{end}}
-  </h1>
-</div>
-<nav class="tabs">
-  <span class="tab active">Code</span>
-  <a class="tab" href="/{{$owner}}/{{$name}}/commits">Commits</a>
-  <a class="tab" href="/{{$owner}}/{{$name}}/branches">Branches</a>
-  <a class="tab" href="/{{$owner}}/{{$name}}/tags">Tags</a>
-  {{if .CanManage}}<a class="tab" href="/{{$owner}}/{{$name}}/settings">Settings</a>{{end}}
-</nav>
+{{template "repo-head" .}}
 
 <section class="card">
-  <div class="tree-path">
-    <code>{{.Path}}</code> · <a href="/{{$owner}}/{{$name}}/tree?ref={{.Ref}}">back to root</a>
-    · <a href="/{{$owner}}/{{$name}}/raw/{{.Path}}?ref={{.Ref}}">raw</a>
+  <div class="page-head">
+    <div class="tree-path"><code>{{.Path}}</code> · {{bytes .Size}}</div>
+    <div class="view-toggle">
+      {{if .Rendered}}
+      <a class="view-link active" href="?ref={{.Ref}}">Source</a>
+      {{else if .CanRender}}
+      <a class="view-link" href="?ref={{.Ref}}&render=1">Rendered</a>
+      {{end}}
+      <a class="view-link" href="/{{$owner}}/{{$name}}/raw/{{.Path}}?ref={{.Ref}}">raw</a>
+    </div>
   </div>
   {{if .Binary}}
     <p class="muted">Binary file ({{bytes .Size}}). Use the raw link to download it.</p>
   {{else if .Truncated}}
     <p class="muted">File is {{bytes .Size}} and too large to preview. Use the raw link to view it fully.</p>
+  {{else if .Rendered}}
+    <div class="markdown-body">{{.Rendered}}</div>
   {{else}}
-  <pre class="code">{{.Content}}</pre>
+  <pre class="code code-lines">{{range .Lines}}<span class="line" id="L{{.N}}">{{.Text}}</span>
+{{end}}</pre>
   {{end}}
 </section>
 {{end}}

@@ -1,6 +1,7 @@
 package web
 
 import (
+	"html/template"
 	"net/http"
 	"strings"
 	"time"
@@ -46,11 +47,28 @@ func (h *Handler) dashboard(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
+
+	// Window the list server-side; personal instances stay small, so an
+	// in-memory slice is exact and avoids a second counting query.
+	const perPage = 20
+	page := pageParam(r)
+	start := (page - 1) * perPage
+	if start > len(repos) {
+		start = len(repos)
+	}
+	end := start + perPage
+	if end > len(repos) {
+		end = len(repos)
+	}
+
 	data := struct {
 		pageData
-		Repos []repoView
-	}{pageData: pd}
-	for _, repo := range repos {
+		Repos   []repoView
+		Page    int
+		HasMore bool
+		PageURL func(int) template.URL
+	}{pageData: pd, Page: page, HasMore: end < len(repos), PageURL: pageURLBuilder(r)}
+	for _, repo := range repos[start:end] {
 		data.Repos = append(data.Repos, toRepoView(repo))
 	}
 	h.render(w, http.StatusOK, "dashboard.tmpl", data)

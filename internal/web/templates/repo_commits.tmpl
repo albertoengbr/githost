@@ -1,17 +1,6 @@
 {{define "content"}}
 {{$owner := .Repo.Owner}}{{$name := .Repo.Name}}
-<div class="repo-head">
-  <h1><a href="/{{$owner}}">{{$owner}}</a> / <a href="/{{$owner}}/{{$name}}">{{$name}}</a>
-    {{if eq .Repo.Visibility "private"}}<span class="badge badge-private">private</span>{{end}}
-  </h1>
-</div>
-<nav class="tabs">
-  <a class="tab" href="/{{$owner}}/{{$name}}">Code</a>
-  <span class="tab active">Commits</span>
-  <a class="tab" href="/{{$owner}}/{{$name}}/branches">Branches</a>
-  <a class="tab" href="/{{$owner}}/{{$name}}/tags">Tags</a>
-  {{if .CanManage}}<a class="tab" href="/{{$owner}}/{{$name}}/settings">Settings</a>{{end}}
-</nav>
+{{template "repo-head" .}}
 
 <div class="page-head">
   <h2>Commits on <code>{{.Ref}}</code></h2>
@@ -29,10 +18,7 @@
   </li>
   {{end}}
 </ul>
-<div class="pager">
-  {{if gt .Page 1}}<a href="?ref={{.Ref}}&page={{Sub .Page 1}}">Newer</a>{{end}}
-  {{if .HasMore}}<a href="?ref={{.Ref}}&page={{Add .Page 1}}">Older</a>{{end}}
-</div>
+{{template "pager" (dict "HasPrev" (gt .Page 1) "HasMore" .HasMore "PrevPage" (Sub .Page 1) "NextPage" (Add .Page 1) "PageURL" .PageURL)}}
 {{else}}
 <p class="muted">No commits on this ref.</p>
 {{end}}

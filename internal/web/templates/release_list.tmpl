@@ -1,0 +1,29 @@
+{{define "content"}}
+{{$owner := .Repo.Owner}}{{$name := .Repo.Name}}
+{{template "repo-head" .}}
+
+<div class="page-head">
+  <h2>Releases</h2>
+  {{if .CanManage}}<a class="button" href="/{{$owner}}/{{$name}}/releases/new">New release</a>{{end}}
+</div>
+
+{{if .Releases}}
+{{range .Releases}}
+<div class="card release-card">
+  <div class="page-head">
+    <h3>{{if .Release.Name}}{{.Release.Name}}{{else}}<span class="mono">{{.Release.TagName}}</span>{{end}}</h3>
+    <div>
+      <a class="badge badge-public" href="/{{$owner}}/{{$name}}/commits?ref={{.Release.TagName}}"><span class="mono">{{.Release.TagName}}</span></a>
+      {{if .Release.IsDraft}}<span class="badge badge-private">draft</span>{{end}}
+    </div>
+  </div>
+  <p class="muted">by {{.Release.Author}} · {{if .Release.IsDraft}}created {{timeago .Release.CreatedAt}}{{else}}published {{timeago .Release.PublishedAt}}{{end}}</p>
+  {{if .NotesHTML}}
+  <div class="markdown-body">{{.NotesHTML}}</div>
+  {{end}}
+</div>
+{{end}}
+{{else}}
+{{template "empty-state" (dict "Icon" "🏷️" "Title" "No releases" "Message" "Releases attach notes to existing tags so users can track versions.")}}
+{{end}}
+{{end}}

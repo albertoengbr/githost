@@ -1,17 +1,6 @@
 {{define "content"}}
 {{$owner := .Repo.Owner}}{{$name := .Repo.Name}}
-<div class="repo-head">
-  <h1><a href="/{{$owner}}">{{$owner}}</a> / <a href="/{{$owner}}/{{$name}}">{{$name}}</a>
-    {{if eq .Repo.Visibility "private"}}<span class="badge badge-private">private</span>{{end}}
-  </h1>
-</div>
-<nav class="tabs">
-  <a class="tab" href="/{{$owner}}/{{$name}}">Code</a>
-  <a class="tab" href="/{{$owner}}/{{$name}}/commits">Commits</a>
-  <span class="tab active">Branches</span>
-  <a class="tab" href="/{{$owner}}/{{$name}}/tags">Tags</a>
-  {{if .CanManage}}<a class="tab" href="/{{$owner}}/{{$name}}/settings">Settings</a>{{end}}
-</nav>
+{{template "repo-head" .}}
 
 <h2>Branches</h2>
 {{if .Branches}}
@@ -28,6 +17,6 @@
   {{end}}
 </ul>
 {{else}}
-<p class="muted">No branches yet — the repository is empty.</p>
+{{template "empty-state" (dict "Icon" "🌿" "Title" "No branches yet" "Message" "The repository is empty — push a commit to create the default branch.")}}
 {{end}}
 {{end}}

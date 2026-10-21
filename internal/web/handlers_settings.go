@@ -12,6 +12,7 @@ import (
 
 // ------------------------------------------------------------- user keys
 
+// keysPage renders the SSH key manager.
 func (h *Handler) keysPage(w http.ResponseWriter, r *http.Request) {
 	pd, su, ok := h.requireSession(w, r)
 	if !ok {
@@ -203,9 +204,12 @@ func (h *Handler) repoSettings(w http.ResponseWriter, r *http.Request) {
 	branches, _ := h.deps.Git.ListBranches(r.Context(), rc.diskPath)
 	data := struct {
 		pageData
-		Repo     repoView
-		Branches []git.Ref
-	}{pageData: pd, Repo: rc.view, Branches: branches}
+		Repo      repoView
+		ActiveTab string
+		CanManage bool
+		Branches  []git.Ref
+	}{pageData: pd, Repo: rc.view, ActiveTab: "settings", CanManage: rc.canManage,
+		Branches: branches}
 	h.render(w, http.StatusOK, "repo_settings.tmpl", data)
 }
 

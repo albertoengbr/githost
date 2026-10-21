@@ -55,7 +55,7 @@
   </p>
   {{end}}
   {{range .Reviews}}
-  <div class="card" style="margin-bottom:.4rem">
+  <div class="card comment-card">
     <p>
       {{if eq .Verdict "approve"}}<span class="badge badge-public">approve</span>
       {{else if eq .Verdict "reject"}}<span class="badge badge-archived">reject</span>
@@ -70,7 +70,7 @@
 <div class="card">
   <h3>Comments</h3>
   {{range .Comments}}
-  <div class="card" style="margin-bottom:.4rem">
+  <div class="card comment-card">
     <p class="muted">{{.Author}} · {{.CreatedAt}}</p>
     <div class="markdown-body">{{.BodyHTML}}</div>
   </div>
@@ -81,7 +81,7 @@
 {{if eq .PR.State "open"}}
 <div class="card">
   <h3>Actions</h3>
-  <form method="post" action="/{{$owner}}/{{$name}}/pulls/{{.PR.Number}}/review" style="margin-bottom:.8rem">
+  <form method="post" action="/{{$owner}}/{{$name}}/pulls/{{.PR.Number}}/review" class="stack-gap">
     <input type="hidden" name="csrf" value="{{.CSRF}}">
     <label>Review comment <textarea name="body" rows="2"></textarea></label>
     <button type="submit" name="verdict" value="approve" class="button">✓ Approve</button>
@@ -89,7 +89,7 @@
     <button type="submit" name="verdict" value="comment" class="button">💬 Comment</button>
   </form>
 
-  <form method="post" action="/{{$owner}}/{{$name}}/pulls/{{.PR.Number}}/merge" style="margin-bottom:.5rem">
+  <form method="post" action="/{{$owner}}/{{$name}}/pulls/{{.PR.Number}}/merge" class="stack-gap-sm">
     <input type="hidden" name="csrf" value="{{.CSRF}}">
     <label>Merge strategy
       <select name="strategy">

@@ -72,6 +72,16 @@ func (m *Manager) End(ctx context.Context, token string) error {
 	return m.store.DeleteSession(ctx, store.HashToken(token))
 }
 
+// MarkMFAPending flags (or clears) the pending-second-factor state of the
+// session behind a cookie token. A pending session is only usable for the
+// MFA challenge — every other page refuses it (see web.requireSession).
+func (m *Manager) MarkMFAPending(ctx context.Context, token string, pending bool) error {
+	if token == "" {
+		return fmt.Errorf("session token required")
+	}
+	return m.store.SetSessionMFAPending(ctx, store.HashToken(token), pending)
+}
+
 // FromRequest extracts the session cookie from a request.
 func FromRequest(r *http.Request) string {
 	c, err := r.Cookie(CookieName)

@@ -98,6 +98,8 @@ type Server struct {
 	ssh    *sshgit.Server
 	lock   *lock.Lock
 	addr   net.Addr
+	jobs   *jobs.Runner
+	hooks  *webhooks.Deliverer
 }
 
 // Start opens the database, applies pending migrations (idempotent),
@@ -156,8 +158,6 @@ func Start(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*Serve
 	eventBus := events.New(logger)
 	webhookDeliverer := webhooks.New(metadata, logger)
 	webhookDeliverer.SubscribeHooks(eventBus)
-	jobRunner := jobs.New(metadata, logger)
-	jobRunner.Start(ctx)
 
 	// F2: web interface prerequisites. The instance secret signs CSRF
 	// tokens; login throttling is per-process (single-instance design).
@@ -171,22 +171,30 @@ func Start(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*Serve
 	csrfManager := csrf.New(secret)
 	loginLimiter := ratelimit.New(5, 15*time.Minute)
 
+	// The job runner doubles as the periodic housekeeping hook for
+	// in-memory state (the login limiter's key map would otherwise grow
+	// without bound for the life of the process).
+	jobRunner := jobs.New(metadata, logger)
+	jobRunner.RegisterHousekeeping(loginLimiter.Prune)
+	jobRunner.Start(ctx)
+
 	var registerErr error
 	handler := httpserver.New(httpserver.Options{
 		DB:     db,
 		Logger: logger,
 		RegisterRoutes: func(mux *http.ServeMux) {
 			if _, err := web.Register(mux, web.Deps{
-				Store:    metadata,
-				Sessions: sessions,
-				CSRF:     csrfManager,
-				Perms:    perms,
-				Repos:    repos,
-				Git:      executor,
-				Limiter:  loginLimiter,
-				Logger:   logger,
-				Pulls:    pulls,
-				Events:   eventBus,
+				Store:          metadata,
+				Sessions:       sessions,
+				CSRF:           csrfManager,
+				Perms:          perms,
+				Repos:          repos,
+				Git:            executor,
+				Limiter:        loginLimiter,
+				Logger:         logger,
+				Pulls:          pulls,
+				Events:         eventBus,
+				InstanceSecret: secret,
 			}); err != nil {
 				registerErr = err
 				return
@@ -225,6 +233,12 @@ func Start(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*Serve
 	httpSrv := &http.Server{
 		Handler:           httpgit.Guard(handler.Handler()),
 		ReadHeaderTimeout: 10 * time.Second,
+		// IdleTimeout reaps keep-alive connections that go quiet after
+		// the headers (slowloris-style connection exhaustion).
+		IdleTimeout: 2 * time.Minute,
+		// WriteTimeout caps one response. Generous: large clones stream
+		// pack files over potentially slow links.
+		WriteTimeout: 10 * time.Minute,
 	}
 	if cfg.Server.TLS.Enabled {
 		// Fail fast on unreadable certificates: a broken TLS config must
@@ -249,6 +263,8 @@ func Start(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*Serve
 		http:   httpSrv,
 		lock:   instanceLock,
 		addr:   ln.Addr(),
+		jobs:   jobRunner,
+		hooks:  webhookDeliverer,
 	}
 
 	// Restricted Git-over-SSH transport (opt-in via configuration).
@@ -317,7 +333,8 @@ func (s *Server) Config() *config.Config {
 }
 
 // Stop shuts down the HTTP server gracefully, stops accepting SSH
-// connections, closes the database and releases the instance lock.
+// connections, stops the job runner, drains in-flight webhook
+// deliveries, closes the database and releases the instance lock.
 func (s *Server) Stop(ctx context.Context) error {
 	var errs []error
 	if err := s.http.Shutdown(ctx); err != nil {
@@ -327,6 +344,14 @@ func (s *Server) Stop(ctx context.Context) error {
 		if err := s.ssh.Close(); err != nil {
 			errs = append(errs, fmt.Errorf("ssh close: %w", err))
 		}
+	}
+	// Background workers must finish before the database closes, or a
+	// mid-tick poll races db.Close.
+	if s.jobs != nil {
+		s.jobs.Stop()
+	}
+	if s.hooks != nil {
+		s.hooks.Wait()
 	}
 	if err := s.db.Close(); err != nil {
 		errs = append(errs, fmt.Errorf("database close: %w", err))

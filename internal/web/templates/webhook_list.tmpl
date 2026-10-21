@@ -1,0 +1,75 @@
+{{define "content"}}
+{{$owner := .Repo.Owner}}{{$name := .Repo.Name}}
+{{template "repo-head" .}}
+
+<h2>Webhooks</h2>
+<p class="muted">Events are delivered as signed JSON POSTs (<code>X-GitHost-Signature</code>, HMAC-SHA256).</p>
+
+{{if .FormError}}<div class="flash flash-err">{{.FormError}}</div>{{end}}
+
+<div class="card">
+  <h3>Add a webhook</h3>
+  <form method="post" action="/{{$owner}}/{{$name}}/settings/webhooks/create">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <label>Payload URL
+      <input name="url" value="{{.FormURL}}" placeholder="https://ci.example.com/hook" required>
+    </label>
+    <label>Secret (≥ 16 chars, used for the HMAC signature; optional)
+      <input name="secret" autocomplete="off">
+    </label>
+    <fieldset>
+      <legend>Events</legend>
+      <label class="checkbox"><input type="checkbox" name="events" value="push" checked> Push</label>
+      <label class="checkbox"><input type="checkbox" name="events" value="issues"> Issues</label>
+      <label class="checkbox"><input type="checkbox" name="events" value="pulls"> Pull requests</label>
+    </fieldset>
+    <button type="submit">Add webhook</button>
+  </form>
+</div>
+
+{{if .Hooks}}
+{{range .Hooks}}
+<div class="card">
+  <div class="page-head">
+    <div>
+      <strong class="mono">{{.Hook.URL}}</strong>
+      {{if .Hook.Active}}<span class="badge badge-public">active</span>
+      {{else}}<span class="badge">paused</span>{{end}}
+      <p class="muted">events: {{.Hook.Events}}</p>
+    </div>
+    <div class="filter-group">
+      <form method="post" action="/{{$owner}}/{{$name}}/settings/webhooks/toggle">
+        <input type="hidden" name="csrf" value="{{$.CSRF}}">
+        <input type="hidden" name="hook_id" value="{{.Hook.ID}}">
+        <input type="hidden" name="active" value="{{if .Hook.Active}}0{{else}}1{{end}}">
+        <button type="submit" class="button">{{if .Hook.Active}}Pause{{else}}Resume{{end}}</button>
+      </form>
+      <form method="post" action="/{{$owner}}/{{$name}}/settings/webhooks/delete">
+        <input type="hidden" name="csrf" value="{{$.CSRF}}">
+        <input type="hidden" name="hook_id" value="{{.Hook.ID}}">
+        <button type="submit" class="button danger">Delete</button>
+      </form>
+    </div>
+  </div>
+
+  <h3>Recent deliveries</h3>
+  {{if .Deliveries}}
+  <table class="table">
+    <tr><th>Event</th><th>Status</th><th>When</th></tr>
+    {{range .Deliveries}}
+    <tr>
+      <td class="mono">{{.Event}}</td>
+      <td>{{if .Success}}<span class="badge badge-public">{{.StatusCode}}</span>{{else}}<span class="badge badge-archived">{{.StatusCode}}</span>{{end}}</td>
+      <td class="muted">{{timeago .CreatedAt}}</td>
+    </tr>
+    {{end}}
+  </table>
+  {{else}}
+  <p class="muted">No deliveries yet.</p>
+  {{end}}
+</div>
+{{end}}
+{{else}}
+{{template "empty-state" (dict "Icon" "🪝" "Title" "No webhooks" "Message" "Add a webhook to notify external services about activity in this repository.")}}
+{{end}}
+{{end}}

@@ -1,24 +1,10 @@
 {{define "content"}}
 {{$owner := .Repo.Owner}}{{$name := .Repo.Name}}
-<div class="repo-head">
-  <h1><a href="/{{$owner}}">{{$owner}}</a> / <a href="/{{$owner}}/{{$name}}">{{$name}}</a>
-    {{if eq .Repo.Visibility "private"}}<span class="badge badge-private">private</span>
-    {{else}}<span class="badge badge-public">public</span>{{end}}
-    {{if .Repo.IsArchived}}<span class="badge badge-archived">archived</span>{{end}}
-  </h1>
-</div>
-<nav class="tabs">
-  <span class="tab active">Code</span>
-  <a class="tab" href="/{{$owner}}/{{$name}}/commits">Commits</a>
-  <a class="tab" href="/{{$owner}}/{{$name}}/branches">Branches</a>
-  <a class="tab" href="/{{$owner}}/{{$name}}/tags">Tags</a>
-  {{if .CanManage}}<a class="tab" href="/{{$owner}}/{{$name}}/settings">Settings</a>{{end}}
-</nav>
+{{template "repo-head" .}}
 
 {{if not .HasCommits}}
+{{template "empty-state" (dict "Icon" "📭" "Title" "Empty repository" "Message" "Push your first commit to get started.")}}
 <div class="card">
-  <h2>Empty repository</h2>
-  <p>Push your first commit, then refresh this page.</p>
   <pre class="code">git clone {{.CloneHTTP}}
 cd {{$name}}
 echo "# {{$name}}" > README.md
@@ -27,6 +13,10 @@ git commit -m "initial commit"
 git push origin {{.Repo.DefaultBranch}}</pre>
 </div>
 {{else}}
+<div class="clone-url" aria-label="Clone URL">
+  <input type="text" readonly value="{{.CloneHTTP}}" aria-label="Clone URL">
+</div>
+
 <div class="latest-commit">
   <strong>{{.Latest.Subject}}</strong>
   <span class="muted">{{.Latest.AuthorName}} committed {{timeago .Latest.AuthorTime}}</span>
@@ -52,7 +42,11 @@ git push origin {{.Repo.DefaultBranch}}</pre>
   <section class="readme card">
     {{if .Readme}}
     <h2>{{.ReadmeName}}</h2>
+    {{if .ReadmeHTML}}
+    <div class="markdown-body">{{.ReadmeHTML}}</div>
+    {{else}}
     <pre class="code">{{.Readme}}</pre>
+    {{end}}
     {{else}}
     <p class="muted">No README in this directory.</p>
     {{end}}

@@ -1,0 +1,20 @@
+{{define "repo-head"}}
+{{$owner := .Repo.Owner}}{{$name := .Repo.Name}}
+<div class="repo-head">
+  <h1><a href="/{{$owner}}">{{$owner}}</a> / <a href="/{{$owner}}/{{$name}}">{{$name}}</a>
+    {{if eq .Repo.Visibility "private"}}<span class="badge badge-private">private</span>
+    {{else}}<span class="badge badge-public">public</span>{{end}}
+    {{if .Repo.IsArchived}}<span class="badge badge-archived">archived</span>{{end}}
+  </h1>
+</div>
+<nav class="tabs" aria-label="Repository sections">
+  <a class="tab{{if eq .ActiveTab "code"}} active{{end}}" href="/{{$owner}}/{{$name}}"{{if eq .ActiveTab "code"}} aria-current="page"{{end}}>Code</a>
+  <a class="tab{{if eq .ActiveTab "commits"}} active{{end}}" href="/{{$owner}}/{{$name}}/commits"{{if eq .ActiveTab "commits"}} aria-current="page"{{end}}>Commits</a>
+  <a class="tab{{if eq .ActiveTab "branches"}} active{{end}}" href="/{{$owner}}/{{$name}}/branches"{{if eq .ActiveTab "branches"}} aria-current="page"{{end}}>Branches</a>
+  <a class="tab{{if eq .ActiveTab "tags"}} active{{end}}" href="/{{$owner}}/{{$name}}/tags"{{if eq .ActiveTab "tags"}} aria-current="page"{{end}}>Tags</a>
+  <a class="tab{{if eq .ActiveTab "releases"}} active{{end}}" href="/{{$owner}}/{{$name}}/releases"{{if eq .ActiveTab "releases"}} aria-current="page"{{end}}>Releases</a>
+  <a class="tab{{if eq .ActiveTab "issues"}} active{{end}}" href="/{{$owner}}/{{$name}}/issues"{{if eq .ActiveTab "issues"}} aria-current="page"{{end}}>Issues</a>
+  <a class="tab{{if eq .ActiveTab "pulls"}} active{{end}}" href="/{{$owner}}/{{$name}}/pulls"{{if eq .ActiveTab "pulls"}} aria-current="page"{{end}}>Pull Requests</a>
+  {{if .CanManage}}<a class="tab{{if eq .ActiveTab "settings"}} active{{end}}" href="/{{$owner}}/{{$name}}/settings"{{if eq .ActiveTab "settings"}} aria-current="page"{{end}}>Settings</a>{{end}}
+</nav>
+{{end}}

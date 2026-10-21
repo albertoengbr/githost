@@ -1,22 +1,10 @@
 {{define "content"}}
 {{$owner := .Repo.Owner}}{{$name := .Repo.Name}}
-<div class="repo-head">
-  <h1><a href="/{{$owner}}">{{$owner}}</a> / <a href="/{{$owner}}/{{$name}}">{{$name}}</a>
-    {{if eq .Repo.Visibility "private"}}<span class="badge badge-private">private</span>{{end}}
-  </h1>
-</div>
-<nav class="tabs">
-  <span class="tab active">Code</span>
-  <a class="tab" href="/{{$owner}}/{{$name}}/commits">Commits</a>
-  <a class="tab" href="/{{$owner}}/{{$name}}/branches">Branches</a>
-  <a class="tab" href="/{{$owner}}/{{$name}}/tags">Tags</a>
-  {{if .CanManage}}<a class="tab" href="/{{$owner}}/{{$name}}/settings">Settings</a>{{end}}
-</nav>
+{{template "repo-head" .}}
 
 <section class="card">
-  <div class="tree-path">branch <code>{{.Ref}}</code> · {{if .Path}}<a href="/{{$owner}}/{{$name}}/tree?ref={{.Ref}}">root</a> / {{.Path}}{{else}}root{{end}}</div>
+  <div class="tree-path">{{if .Path}}<a href="/{{$owner}}/{{$name}}/tree?ref={{.Ref}}">root</a> / {{.Path}}{{else}}root{{end}}</div>
   {{if .Entries}}
-  <div class="tree-row tree-head"><span>Name</span><span class="muted">Size</span></div>
   {{range .Entries}}
   <div class="tree-row">
     {{if eq .Type "tree"}}
@@ -30,7 +18,7 @@
   </div>
   {{end}}
   {{else}}
-  <p class="muted">Empty directory or unknown ref.</p>
+  <p class="muted">Empty directory.</p>
   {{end}}
 </section>
 {{end}}

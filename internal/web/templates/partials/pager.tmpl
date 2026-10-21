@@ -1,0 +1,10 @@
+{{define "pager"}}
+{{if or .HasPrev .HasMore}}
+<nav class="pager" aria-label="Pagination">
+  {{if .HasPrev}}<a class="pager-link" href="{{.PageURL .PrevPage}}">‹ Previous</a>
+  {{else}}<span class="pager-link is-disabled">‹ Previous</span>{{end}}
+  {{if .HasMore}}<a class="pager-link" href="{{.PageURL .NextPage}}">Next ›</a>
+  {{else}}<span class="pager-link is-disabled">Next ›</span>{{end}}
+</nav>
+{{end}}
+{{end}}

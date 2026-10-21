@@ -1,6 +1,7 @@
 package web
 
 import (
+	"errors"
 	"html/template"
 	"net/http"
 	"strconv"
@@ -9,6 +10,7 @@ import (
 	"githost.dev/githost/internal/events"
 	"githost.dev/githost/internal/git"
 	"githost.dev/githost/internal/markdown"
+	"githost.dev/githost/internal/prservice"
 	"githost.dev/githost/internal/store"
 )
 
@@ -71,16 +73,35 @@ func (h *Handler) issueList(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
+
+	// Window the list server-side.
+	const perPage = 25
+	page := pageParam(r)
+	start := (page - 1) * perPage
+	if start > len(issues) {
+		start = len(issues)
+	}
+	end := start + perPage
+	if end > len(issues) {
+		end = len(issues)
+	}
+	hasMore := end < len(issues)
+
 	var views []issueView
-	for _, it := range issues {
+	for _, it := range issues[start:end] {
 		views = append(views, issueToView(it))
 	}
 	data := struct {
 		pageData
-		Repo   repoView
-		State  string
-		Issues []issueView
-	}{pageData: pd, Repo: rc.view, State: state, Issues: views}
+		Repo      repoView
+		ActiveTab string
+		State     string
+		Issues    []issueView
+		Page      int
+		HasMore   bool
+		PageURL   func(int) template.URL
+	}{pageData: pd, Repo: rc.view, ActiveTab: "issues", State: state,
+		Issues: views, Page: page, HasMore: hasMore, PageURL: pageURLBuilder(r)}
 	h.render(w, http.StatusOK, "issue_list.tmpl", data)
 }
 
@@ -98,8 +119,10 @@ func (h *Handler) issueNew(w http.ResponseWriter, r *http.Request) {
 	data := struct {
 		pageData
 		Repo      repoView
+		ActiveTab string
+		CanManage bool
 		FormError string
-	}{pageData: pd, Repo: rc.view}
+	}{pageData: pd, Repo: rc.view, ActiveTab: "issues", CanManage: rc.canManage}
 	h.render(w, http.StatusOK, "issue_new.tmpl", data)
 }
 
@@ -185,12 +208,15 @@ func (h *Handler) issueDetail(w http.ResponseWriter, r *http.Request) {
 	data := struct {
 		pageData
 		Repo        repoView
+		ActiveTab   string
+		CanManage   bool
 		Issue       issueView
 		Comments    []issueCommentView
 		Events      []eventView
 		Labels      []store.Label
 		IssueLabels map[int64]bool
-	}{pageData: pd, Repo: rc.view, Issue: issueToView(issue),
+	}{pageData: pd, Repo: rc.view, ActiveTab: "issues", CanManage: rc.canManage,
+		Issue:    issueToView(issue),
 		Comments: commentViews, Events: eventViews, Labels: repoLabels,
 		IssueLabels: map[int64]bool{}}
 	for _, l := range issue.Labels {
@@ -324,16 +350,36 @@ func (h *Handler) pullList(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
+
+	// Window the list server-side.
+	const perPage = 25
+	page := pageParam(r)
+	start := (page - 1) * perPage
+	if start > len(pulls) {
+		start = len(pulls)
+	}
+	end := start + perPage
+	if end > len(pulls) {
+		end = len(pulls)
+	}
+	hasMore := end < len(pulls)
+
 	var views []pullView
-	for _, p := range pulls {
+	for _, p := range pulls[start:end] {
 		views = append(views, pullToView(p))
 	}
 	data := struct {
 		pageData
-		Repo  repoView
-		State string
-		Pulls []pullView
-	}{pageData: pd, Repo: rc.view, State: state, Pulls: views}
+		Repo      repoView
+		ActiveTab string
+		CanManage bool
+		State     string
+		Pulls     []pullView
+		Page      int
+		HasMore   bool
+		PageURL   func(int) template.URL
+	}{pageData: pd, Repo: rc.view, ActiveTab: "pulls", CanManage: rc.canManage,
+		State: state, Pulls: views, Page: page, HasMore: hasMore, PageURL: pageURLBuilder(r)}
 	h.render(w, http.StatusOK, "pull_list.tmpl", data)
 }
 
@@ -350,9 +396,12 @@ func (h *Handler) pullNew(w http.ResponseWriter, r *http.Request) {
 	data := struct {
 		pageData
 		Repo      repoView
+		ActiveTab string
+		CanManage bool
 		Branches  []git.Ref
 		FormError string
-	}{pageData: pd, Repo: rc.view, Branches: branches}
+	}{pageData: pd, Repo: rc.view, ActiveTab: "pulls", CanManage: rc.canManage,
+		Branches: branches}
 	h.render(w, http.StatusOK, "pull_new.tmpl", data)
 }
 
@@ -464,11 +513,13 @@ func (h *Handler) pullDetail(w http.ResponseWriter, r *http.Request) {
 
 	data := struct {
 		pageData
-		Repo    repoView
-		PR      pullView
-		Commits []git.Commit
-		Diff    string
-		Reviews []struct {
+		Repo      repoView
+		ActiveTab string
+		CanManage bool
+		PR        pullView
+		Commits   []git.Commit
+		Diff      string
+		Reviews   []struct {
 			Reviewer, Verdict string
 			BodyHTML          template.HTML
 			When              string
@@ -480,7 +531,8 @@ func (h *Handler) pullDetail(w http.ResponseWriter, r *http.Request) {
 			RequireApproval bool
 		}
 		Approvals, Rejections int
-	}{pageData: pd, Repo: rc.view, PR: pullToView(detail.PR),
+	}{pageData: pd, Repo: rc.view, ActiveTab: "pulls", CanManage: rc.canManage,
+		PR:      pullToView(detail.PR),
 		Commits: detail.Commits, Diff: detail.Diff,
 		Reviews: reviews, Comments: comments,
 		Conflicts: conflicts, Rules: rules,
@@ -514,7 +566,15 @@ func (h *Handler) pullReview(w http.ResponseWriter, r *http.Request) {
 	verdict := r.PostFormValue("verdict")
 	body := strings.TrimSpace(r.PostFormValue("body"))
 	if _, err := h.deps.Pulls.Review(r.Context(), pr, &su.User, verdict, body); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		switch {
+		case errors.Is(err, prservice.ErrSelfReview):
+			http.Error(w, "the pull request author cannot approve or reject their own pull request", http.StatusForbidden)
+		case errors.Is(err, prservice.ErrAlreadyMerged):
+			http.Error(w, "pull request is not open", http.StatusConflict)
+		default:
+			h.logger.Error("pr_review_failed", "err", err)
+			http.Error(w, "invalid review request", http.StatusBadRequest)
+		}
 		return
 	}
 	http.Redirect(w, r, "/"+rc.repo.Owner+"/"+rc.repo.Name+"/pulls/"+strconv.FormatInt(number, 10), http.StatusSeeOther)

@@ -1,0 +1,39 @@
+{{define "content"}}
+{{$owner := .Repo.Owner}}{{$name := .Repo.Name}}
+{{template "repo-head" .}}
+
+<div class="page-head">
+  <h2>Labels</h2>
+</div>
+
+<div class="card">
+  <h3>New label</h3>
+  {{if .FormError}}<div class="flash flash-err">{{.FormError}}</div>{{end}}
+  <form method="post" action="/{{$owner}}/{{$name}}/settings/labels/create" class="label-form">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <label>Name <input name="name" required maxlength="50"></label>
+    <label>Color (6 hex digits) <input name="color" value="1e5a87" pattern="[0-9a-fA-F]{6}" required></label>
+    <button type="submit">Create label</button>
+  </form>
+</div>
+
+{{if .Labels}}
+<ul class="ref-list">
+  {{range .Labels}}
+  <li class="ref-item">
+    <div>
+      <span class="label-badge"><img src="{{colordot .Color}}" alt="" width="10" height="10">{{.Name}}</span>
+      <span class="muted mono">#{{.Color}}</span>
+    </div>
+    <form method="post" action="/{{$owner}}/{{$name}}/settings/labels/delete">
+      <input type="hidden" name="csrf" value="{{$.CSRF}}">
+      <input type="hidden" name="label_id" value="{{.ID}}">
+      <button type="submit" class="button danger">Delete</button>
+    </form>
+  </li>
+  {{end}}
+</ul>
+{{else}}
+{{template "empty-state" (dict "Icon" "🏷️" "Title" "No labels" "Message" "Labels categorize issues; create the first one above.")}}
+{{end}}
+{{end}}

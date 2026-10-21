@@ -4,7 +4,7 @@
 IMPLEMENTING, TESTING, BLOCKED, ACCEPTED. Evidence is required for
 ACCEPTED; percentages are never used.
 
-Last updated: 2026-10-17 (end of F5+F6)
+Last updated: 2026-10-21 (security fixes + UI enhancement pass)
 
 ## Phase summary
 
@@ -42,7 +42,7 @@ Last updated: 2026-10-17 (end of F5+F6)
 | Git core | Live binary validation (both transports, cross pull) | ACCEPTED | f1-evidence.md §3 |
 | Web UI | Session login (Argon2id, cookies, CSRF, rate-limited) | ACCEPTED | internal/session+csrf+ratelimit (+tests); web login flow |
 | Web UI | Dashboard, repository list, creation form | ACCEPTED | internal/web (+tests, live §4 f2-evidence) |
-| Web UI | Repository home with README preview | ACCEPTED | renders real git content (plain `<pre>`; Markdown rendering deferred) |
+| Web UI | Repository home with README preview | ACCEPTED | renders real git content; `.md` READMEs render as sanitized HTML (internal/markdown), text fallback otherwise |
 | Web UI | Tree browser, file viewer, raw download | ACCEPTED | internal/web (+tests) |
 | Web UI | Commit history (paginated), commit detail + patch | ACCEPTED | internal/web (+tests) |
 | Web UI | Branches and tags pages | ACCEPTED | internal/web (+tests) |
@@ -93,8 +93,10 @@ Last updated: 2026-10-17 (end of F5+F6)
    from F0).
 3. **Windows native SCM service** is documented via wrapper tools
    (NSSM/WinSW/Task Scheduler); a first-party SCM handler remains a gap.
-4. **README rendering** is plain text (`<pre>`); Markdown rendering is
-   deferred to F4 (with Issues/PRs).
+4. ~~**README rendering** is plain text (`<pre>`)~~ — **resolved**: `.md`
+   READMEs (home, blob `?render=1`) render as sanitized HTML via
+   internal/markdown; other files keep the plain-text view with line
+   numbers and `#L`-anchors.
 5. **i18n**: UI is English-only.
 6. **Platform validation**: windows/amd64 is dev-host-validated;
    linux/amd64 is container-validated (init/doctor/serve); every other
@@ -110,9 +112,17 @@ Last updated: 2026-10-17 (end of F5+F6)
 ## Next task
 
 All charter phases (F0–F6) are complete. The remaining items are
-post-MVP enhancements recorded above (Releases, Wiki, LFS, MFA,
-advanced search, remote storage) and operational hardening: activating
-CI on a live runner, Windows native SCM, PostgreSQL driver, and
-Markdown syntax highlighting.
+post-MVP enhancements recorded above (Wiki, LFS, advanced search beyond
+LIKE, remote storage) and operational hardening: activating
+CI on a live runner, Windows native SCM, PostgreSQL driver,
+and Markdown syntax highlighting.
+
+The 2026-10-21 pass landed: MFA login flow hardened (mfa_pending session
+gate, fail-closed checks, challenge rate limit), PR self-review blocked
+(service + migration 0006 unique index + upsert), job runner lifecycle
+(Stop/requeue/stale recovery) and webhook delivery pool with an SSRF
+dial guard, and the UI gained search, webhook management, releases,
+labels, line-numbered blobs, pagination, a user menu, empty states and
+a manual dark theme (still zero-JavaScript).
 
 

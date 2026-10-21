@@ -1,0 +1,18 @@
+{{define "content"}}
+<div class="card narrow">
+  <h1>Two-factor verification</h1>
+  <p>Enter the 6-digit code from your authenticator app, or a recovery code.</p>
+  {{if .FormError}}<div class="flash flash-err">{{.FormError}}</div>{{end}}
+  <form method="post" action="/mfa/verify">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <label>Authentication code
+      <input name="code" placeholder="123456 or abcd-ef12-3456"
+             autocomplete="one-time-code" required autofocus>
+    </label>
+    <button type="submit">Verify</button>
+  </form>
+  <p class="muted stack-gap">
+    <a href="/login">Cancel and go back to login</a>
+  </p>
+</div>
+{{end}}

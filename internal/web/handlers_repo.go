@@ -2,12 +2,13 @@ package web
 
 import (
 	"errors"
+	"html/template"
 	"net/http"
 	"path"
-	"strconv"
 	"strings"
 
 	"githost.dev/githost/internal/git"
+	"githost.dev/githost/internal/markdown"
 	"githost.dev/githost/internal/permissions"
 	"githost.dev/githost/internal/reposervice"
 	"githost.dev/githost/internal/store"
@@ -91,6 +92,7 @@ func (h *Handler) repoHome(w http.ResponseWriter, r *http.Request) {
 	data := struct {
 		pageData
 		Repo       repoView
+		ActiveTab  string
 		CanManage  bool
 		HasCommits bool
 		Latest     *git.Commit
@@ -99,8 +101,10 @@ func (h *Handler) repoHome(w http.ResponseWriter, r *http.Request) {
 		Ref        string
 		Readme     string
 		ReadmeName string
+		ReadmeHTML template.HTML
 		CloneHTTP  string
-	}{pageData: pd, Repo: rc.view, CanManage: rc.canManage, Ref: rc.repo.DefaultBranch}
+	}{pageData: pd, Repo: rc.view, ActiveTab: "code", CanManage: rc.canManage,
+		Ref: rc.repo.DefaultBranch}
 
 	data.CloneHTTP = "http://" + r.Host + "/" + rc.repo.Owner + "/" + rc.repo.Name + ".git"
 
@@ -146,6 +150,15 @@ func (h *Handler) repoHome(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
+		// Render Markdown READMEs as HTML (sanitized by internal/markdown).
+		if data.Readme != "" {
+			lower := strings.ToLower(data.ReadmeName)
+			if strings.HasSuffix(lower, ".md") || strings.HasSuffix(lower, ".markdown") {
+				if html, err := markdown.Render(data.Readme); err == nil {
+					data.ReadmeHTML = html
+				}
+			}
+		}
 	}
 	h.render(w, http.StatusOK, "repo_home.tmpl", data)
 }
@@ -166,11 +179,12 @@ func (h *Handler) repoTree(w http.ResponseWriter, r *http.Request) {
 	data := struct {
 		pageData
 		Repo      repoView
+		ActiveTab string
 		CanManage bool
 		Entries   []git.TreeEntry
 		Path      string
 		Ref       string
-	}{pageData: pd, Repo: rc.view, CanManage: rc.canManage, Path: treePath, Ref: r.URL.Query().Get("ref")}
+	}{pageData: pd, Repo: rc.view, ActiveTab: "code", CanManage: rc.canManage, Path: treePath, Ref: r.URL.Query().Get("ref")}
 
 	if treePath == "" {
 		http.Redirect(w, r, "/"+rc.repo.Owner+"/"+rc.repo.Name, http.StatusSeeOther)
@@ -201,14 +215,17 @@ func (h *Handler) repoBlob(w http.ResponseWriter, r *http.Request) {
 	data := struct {
 		pageData
 		Repo      repoView
+		ActiveTab string
 		CanManage bool
 		Path      string
 		Ref       string
-		Content   string
 		Size      int64
 		Binary    bool
 		Truncated bool
-	}{pageData: pd, Repo: rc.view, CanManage: rc.canManage, Path: blobPath, Ref: r.URL.Query().Get("ref")}
+		CanRender bool // markdown file and a full-text copy is available
+		Rendered  template.HTML
+		Lines     []blobLine
+	}{pageData: pd, Repo: rc.view, ActiveTab: "code", CanManage: rc.canManage, Path: blobPath, Ref: r.URL.Query().Get("ref")}
 
 	content, err := h.deps.Git.CatFileBlob(r.Context(), rc.diskPath, refName, blobPath, 512<<10)
 	if err != nil {
@@ -225,9 +242,29 @@ func (h *Handler) repoBlob(w http.ResponseWriter, r *http.Request) {
 	data.Size = int64(len(content))
 	data.Binary = git.IsBinary(content)
 	if !data.Binary {
-		data.Content = string(content)
+		text := string(content)
+		lower := strings.ToLower(blobPath)
+		isMarkdown := strings.HasSuffix(lower, ".md") || strings.HasSuffix(lower, ".markdown")
+		if isMarkdown {
+			data.CanRender = true
+			if r.URL.Query().Get("render") == "1" {
+				if html, err := markdown.Render(text); err == nil {
+					data.Rendered = html
+				}
+			}
+		}
+		// Line view: one span per line so each line owns an anchor (#L42).
+		for i, line := range strings.Split(strings.TrimSuffix(text, "\n"), "\n") {
+			data.Lines = append(data.Lines, blobLine{N: i + 1, Text: line})
+		}
 	}
 	h.render(w, http.StatusOK, "repo_blob.tmpl", data)
+}
+
+// blobLine is one numbered source line in the blob view.
+type blobLine struct {
+	N    int
+	Text string
 }
 
 func (h *Handler) repoRaw(w http.ResponseWriter, r *http.Request) {
@@ -273,10 +310,7 @@ func (h *Handler) repoCommits(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	const perPage = 30
-	page := 1
-	if n, err := strconv.Atoi(r.URL.Query().Get("page")); err == nil && n >= 1 && n <= 1000 {
-		page = n
-	}
+	page := pageParam(r)
 
 	commits, err := h.deps.Git.Log(r.Context(), rc.diskPath, refName, (page-1)*perPage, perPage+1)
 	if err != nil {
@@ -295,13 +329,16 @@ func (h *Handler) repoCommits(w http.ResponseWriter, r *http.Request) {
 	data := struct {
 		pageData
 		Repo      repoView
+		ActiveTab string
 		CanManage bool
 		Commits   []git.Commit
 		Ref       string
 		Page      int
 		HasMore   bool
-	}{pageData: pd, Repo: rc.view, CanManage: rc.canManage,
-		Commits: commits, Ref: display, Page: page, HasMore: hasMore}
+		PageURL   func(int) template.URL
+	}{pageData: pd, Repo: rc.view, ActiveTab: "commits", CanManage: rc.canManage,
+		Commits: commits, Ref: display, Page: page, HasMore: hasMore,
+		PageURL: pageURLBuilder(r)}
 	h.render(w, http.StatusOK, "repo_commits.tmpl", data)
 }
 
@@ -322,10 +359,11 @@ func (h *Handler) repoCommit(w http.ResponseWriter, r *http.Request) {
 	data := struct {
 		pageData
 		Repo      repoView
+		ActiveTab string
 		CanManage bool
 		Commit    *git.Commit
 		Patch     string
-	}{pageData: pd, Repo: rc.view, CanManage: rc.canManage, Commit: commit, Patch: patch}
+	}{pageData: pd, Repo: rc.view, ActiveTab: "commits", CanManage: rc.canManage, Commit: commit, Patch: patch}
 	h.render(w, http.StatusOK, "repo_commit.tmpl", data)
 }
 
@@ -342,9 +380,10 @@ func (h *Handler) repoBranches(w http.ResponseWriter, r *http.Request) {
 	data := struct {
 		pageData
 		Repo      repoView
+		ActiveTab string
 		CanManage bool
 		Branches  []git.Ref
-	}{pageData: pd, Repo: rc.view, CanManage: rc.canManage, Branches: branches}
+	}{pageData: pd, Repo: rc.view, ActiveTab: "branches", CanManage: rc.canManage, Branches: branches}
 	h.render(w, http.StatusOK, "repo_branches.tmpl", data)
 }
 
@@ -361,8 +400,9 @@ func (h *Handler) repoTags(w http.ResponseWriter, r *http.Request) {
 	data := struct {
 		pageData
 		Repo      repoView
+		ActiveTab string
 		CanManage bool
 		Tags      []git.Ref
-	}{pageData: pd, Repo: rc.view, CanManage: rc.canManage, Tags: tags}
+	}{pageData: pd, Repo: rc.view, ActiveTab: "tags", CanManage: rc.canManage, Tags: tags}
 	h.render(w, http.StatusOK, "repo_tags.tmpl", data)
 }

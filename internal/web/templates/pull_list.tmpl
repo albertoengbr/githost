@@ -1,21 +1,11 @@
 {{define "content"}}
 {{$owner := .Repo.Owner}}{{$name := .Repo.Name}}
-<div class="repo-head">
-  <h1><a href="/{{$owner}}">{{$owner}}</a> / <a href="/{{$owner}}/{{$name}}">{{$name}}</a>
-    {{if eq .Repo.Visibility "private"}}<span class="badge badge-private">private</span>{{end}}
-  </h1>
-</div>
-<nav class="tabs">
-  <a class="tab" href="/{{$owner}}/{{$name}}">Code</a>
-  <a class="tab" href="/{{$owner}}/{{$name}}/issues">Issues</a>
-  <span class="tab active">Pull Requests</span>
-  {{if .CanManage}}<a class="tab" href="/{{$owner}}/{{$name}}/settings">Settings</a>{{end}}
-</nav>
+{{template "repo-head" .}}
 
 <div class="page-head">
-  <div>
-    <a class="button" style="margin-right:.5rem" href="/{{$owner}}/{{$name}}/pulls">All</a>
-    <a class="button" href="/{{$owner}}/{{$name}}/pulls?state=open">Open</a>
+  <div class="filter-group">
+    <a class="button{{if eq .State ""}} is-active{{end}}" href="/{{$owner}}/{{$name}}/pulls">All</a>
+    <a class="button{{if eq .State "open"}} is-active{{end}}" href="/{{$owner}}/{{$name}}/pulls?state=open">Open</a>
   </div>
   {{if .Username}}<a class="button" href="/{{$owner}}/{{$name}}/pulls/new">New PR</a>{{end}}
 </div>
@@ -34,7 +24,8 @@
   </li>
   {{end}}
 </ul>
+{{template "pager" (dict "HasPrev" (gt .Page 1) "HasMore" .HasMore "PrevPage" (Sub .Page 1) "NextPage" (Add .Page 1) "PageURL" .PageURL)}}
 {{else}}
-<p class="muted">No pull requests {{.State}}.</p>
+{{template "empty-state" (dict "Icon" "🔀" "Title" (printf "No pull requests %s" (or .State "yet")) "Message" "Pull requests propose and review changes before they land.")}}
 {{end}}
 {{end}}

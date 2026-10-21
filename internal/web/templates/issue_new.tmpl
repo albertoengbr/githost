@@ -1,12 +1,6 @@
 {{define "content"}}
 {{$owner := .Repo.Owner}}{{$name := .Repo.Name}}
-<div class="repo-head">
-  <h1><a href="/{{$owner}}">{{$owner}}</a> / <a href="/{{$owner}}/{{$name}}">{{$name}}</a></h1>
-</div>
-<nav class="tabs">
-  <a class="tab" href="/{{$owner}}/{{$name}}/issues">Issues</a>
-  <span class="tab active">New</span>
-</nav>
+{{template "repo-head" .}}
 
 <div class="card narrow">
   <h2>New issue</h2>

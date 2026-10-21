@@ -1,0 +1,49 @@
+{{define "content"}}
+<div class="page-head"><h1>Two-factor authentication</h1></div>
+
+{{if .MFAEnabled}}
+<div class="card">
+  <h2>✓ Enabled</h2>
+  <p>Two-factor authentication is active on your account.</p>
+  <p class="muted">Recovery codes remaining: {{.UnusedCodes}}</p>
+
+  {{if .RecoveryCodes}}
+  <div class="card token-reveal">
+    <h3>Your recovery codes</h3>
+    <p>Each code can be used once. Store them safely — they will not be shown again.</p>
+    <pre class="code">{{range .RecoveryCodes}}{{.}}
+{{end}}</pre>
+  </div>
+  {{end}}
+
+  <details>
+    <summary>Disable two-factor authentication</summary>
+    <form method="post" action="/settings/mfa/disable" class="stack-gap">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <label>Enter a current TOTP code to confirm
+        <input name="code" pattern="[0-9]{6}" placeholder="123456" required>
+      </label>
+      <button type="submit" class="danger">Disable MFA</button>
+    </form>
+  </details>
+</div>
+{{else}}
+<div class="card">
+  <h2>Set up TOTP</h2>
+  <p>Scan this secret in your authenticator app (Google Authenticator, Authy, 1Password, etc.):</p>
+  <div class="card secret-reveal">
+    <code class="secret-code">{{.Secret}}</code>
+  </div>
+  <p class="muted">Or add manually: issuer <strong>GitHost</strong>, account <strong>{{.Username}}</strong>.</p>
+
+  <form method="post" action="/settings/mfa/enable" class="stack-gap">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <input type="hidden" name="secret" value="{{.Secret}}">
+    <label>Enter the 6-digit code from your app
+      <input name="code" pattern="[0-9]{6}" placeholder="123456" required autofocus>
+    </label>
+    <button type="submit">Enable two-factor authentication</button>
+  </form>
+</div>
+{{end}}
+{{end}}

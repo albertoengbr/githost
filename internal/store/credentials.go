@@ -229,12 +229,13 @@ func (s *Store) Audit(ctx context.Context, actorID *int64, action, target, detai
 // Session is a web login session. The cookie carries a random token; only
 // its SHA-256 hash (ID) is stored.
 type Session struct {
-	ID        string // sha256 hex of the cookie token
-	UserID    int64
-	ExpiresAt time.Time
-	CreatedAt time.Time
-	IP        string
-	UserAgent string
+	ID         string // sha256 hex of the cookie token
+	UserID     int64
+	ExpiresAt  time.Time
+	CreatedAt  time.Time
+	IP         string
+	UserAgent  string
+	MFAPending bool // password passed, second factor outstanding
 }
 
 // SessionUser is the result of resolving a session: both the session row
@@ -260,13 +261,13 @@ func (s *Store) CreateSession(ctx context.Context, id string, userID int64, expi
 // enforcing expiry.
 func (s *Store) SessionByHash(ctx context.Context, id string) (*SessionUser, error) {
 	row := s.db.QueryRowContext(ctx,
-		`SELECT s.id, s.user_id, s.expires_at, s.created_at, s.ip, s.user_agent,
+		`SELECT s.id, s.user_id, s.expires_at, s.created_at, s.ip, s.user_agent, s.mfa_pending,
 		        u.id, u.username, u.email, u.password_hash, u.is_admin, u.created_at, u.updated_at
 		 FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.id = ?`, id)
 	var su SessionUser
 	var sExpires, sCreated, uCreated, uUpdated string
-	var isAdmin int
-	err := row.Scan(&su.Session.ID, &su.Session.UserID, &sExpires, &sCreated, &su.Session.IP, &su.Session.UserAgent,
+	var isAdmin, mfaPending int
+	err := row.Scan(&su.Session.ID, &su.Session.UserID, &sExpires, &sCreated, &su.Session.IP, &su.Session.UserAgent, &mfaPending,
 		&su.User.ID, &su.User.Username, &su.User.Email, &su.User.PasswordHash, &isAdmin, &uCreated, &uUpdated)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
@@ -275,6 +276,7 @@ func (s *Store) SessionByHash(ctx context.Context, id string) (*SessionUser, err
 		return nil, err
 	}
 	su.User.IsAdmin = isAdmin != 0
+	su.Session.MFAPending = mfaPending != 0
 	su.Session.ExpiresAt = parseTime(sExpires)
 	su.Session.CreatedAt = parseTime(sCreated)
 	su.User.CreatedAt = parseTime(uCreated)
@@ -288,6 +290,15 @@ func (s *Store) SessionByHash(ctx context.Context, id string) (*SessionUser, err
 // DeleteSession removes one session (logout).
 func (s *Store) DeleteSession(ctx context.Context, id string) error {
 	_, err := s.db.ExecContext(ctx, "DELETE FROM sessions WHERE id = ?", id)
+	return err
+}
+
+// SetSessionMFAPending flags (or clears) the pending-second-factor state
+// of a session. A pending session must only reach the MFA challenge; the
+// web layer enforces that in requireSession.
+func (s *Store) SetSessionMFAPending(ctx context.Context, id string, pending bool) error {
+	_, err := s.db.ExecContext(ctx,
+		"UPDATE sessions SET mfa_pending = ? WHERE id = ?", boolToInt(pending), id)
 	return err
 }
 

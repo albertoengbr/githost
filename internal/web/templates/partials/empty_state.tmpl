@@ -1,0 +1,7 @@
+{{define "empty-state"}}
+<div class="empty-state">
+  <div class="empty-icon" aria-hidden="true">{{with .Icon}}{{.}}{{else}}∅{{end}}</div>
+  <h2>{{.Title}}</h2>
+  {{if .Message}}<p class="muted">{{.Message}}</p>{{end}}
+</div>
+{{end}}

@@ -1,0 +1,56 @@
+{{define "content"}}
+<div class="page-head">
+  <h1>Search</h1>
+</div>
+
+<form class="search-form" method="get" action="/search" role="search">
+  <input type="search" name="q" value="{{.Query}}" placeholder="Search repositories and issues…" aria-label="Search query">
+  <select name="in" aria-label="Scope">
+    <option value="all" {{if eq .Scope "all"}}selected{{end}}>Everything</option>
+    <option value="repos" {{if eq .Scope "repos"}}selected{{end}}>Repositories</option>
+    <option value="issues" {{if eq .Scope "issues"}}selected{{end}}>Issues</option>
+  </select>
+  <button type="submit">Search</button>
+</form>
+
+{{if .Query}}
+  {{if and (not .Repos) (not .Issues)}}
+  {{template "empty-state" (dict "Icon" "🔍" "Title" "No results" "Message" (printf "Nothing matched %q." .Query))}}
+  {{end}}
+
+  {{if .Repos}}
+  <h2>Repositories</h2>
+  <ul class="repo-list">
+    {{range .Repos}}
+    <li class="repo-item">
+      <div>
+        <a class="repo-name" href="/{{.Owner}}/{{.Name}}">{{.Owner}} / {{.Name}}</a>
+        {{if eq .Visibility "private"}}<span class="badge badge-private">private</span>
+        {{else}}<span class="badge badge-public">public</span>{{end}}
+        {{if .Description}}<p class="repo-desc">{{.Description}}</p>{{end}}
+      </div>
+      <span class="repo-meta">updated {{timeago .UpdatedAt}}</span>
+    </li>
+    {{end}}
+  </ul>
+  {{end}}
+
+  {{if .Issues}}
+  <h2>Issues</h2>
+  <ul class="commit-list">
+    {{range .Issues}}
+    <li class="commit-item">
+      <div>
+        <a class="commit-subject" href="/{{.Repo}}/issues/{{.Number}}">{{.Title}}</a>
+        {{if eq .State "closed"}}<span class="badge badge-archived">closed</span>
+        {{else}}<span class="badge badge-public">open</span>{{end}}
+        <p class="muted">{{.Repo}} #{{.Number}}{{if .Snippet}} · {{.Snippet}}{{end}}</p>
+      </div>
+    </li>
+    {{end}}
+  </ul>
+  {{end}}
+{{else}}
+<p class="muted">Search covers repositories (name and description) and issue titles and bodies you are allowed to see.</p>
+{{end}}
+{{end}}
