@@ -235,6 +235,34 @@ func TestReleaseRoundTrip(t *testing.T) {
 	}
 }
 
+// TestEmptyRepoCommitsRendersOnboarding: a repository without any commit
+// used to 404 on /commits — it must render the onboarding empty state.
+func TestEmptyRepoCommitsRendersOnboarding(t *testing.T) {
+	h := newHarness(t)
+	h.createUser("alice", "correct-password-1")
+	if code := h.login("alice", "correct-password-1"); code != http.StatusSeeOther {
+		t.Fatalf("login failed: %d", code)
+	}
+	form := url.Values{}
+	form.Set("csrf", csrfTokenFromHTML(t, h.get("/new")))
+	form.Set("name", "empty-one")
+	form.Set("visibility", "public")
+	form.Set("default_branch", "main")
+	resp := h.postForm("/new", form)
+	resp.Body.Close()
+
+	page := h.get("/alice/empty-one/commits")
+	if !strings.Contains(page, "No commits yet") ||
+		!strings.Contains(page, "empty-state") {
+		t.Fatalf("empty-repo commits page:\n%s", page)
+	}
+	// The tag/branches pages already had empty states; the commit list
+	// must exist as an element, not just text.
+	if !strings.Contains(page, "Commits on") {
+		t.Fatal("commits page missing its heading")
+	}
+}
+
 // TestLabelsCRUD covers the label manager page and permission gating.
 func TestLabelsCRUD(t *testing.T) {
 	h := newHarness(t)

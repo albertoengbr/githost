@@ -79,6 +79,14 @@ func (h *Handler) pageRef(r *http.Request, rc *repoContext) (string, error) {
 	return full, nil
 }
 
+// repoIsEmpty reports whether the repository has no commits at all: the
+// default branch ref cannot be resolved. Empty repositories are not an
+// error — pages render an onboarding state instead of a bare 404.
+func (h *Handler) repoIsEmpty(r *http.Request, rc *repoContext) bool {
+	_, err := h.deps.Git.Log(r.Context(), rc.diskPath, "refs/heads/"+rc.repo.DefaultBranch, 0, 1)
+	return err != nil
+}
+
 // commitHead renders a repo page with the "repo head" content: latest
 // commit, tree listing and README preview.
 func (h *Handler) repoHome(w http.ResponseWriter, r *http.Request) {
@@ -192,8 +200,11 @@ func (h *Handler) repoTree(w http.ResponseWriter, r *http.Request) {
 	}
 	entries, err := h.deps.Git.LsTree(r.Context(), rc.diskPath, refName, treePath)
 	if err != nil {
-		http.NotFound(w, r)
-		return
+		if !h.repoIsEmpty(r, rc) {
+			http.NotFound(w, r)
+			return
+		}
+		entries = nil // empty repository: onboarding state
 	}
 	data.Entries = entries
 	h.render(w, http.StatusOK, "repo_tree.tmpl", data)
@@ -314,8 +325,13 @@ func (h *Handler) repoCommits(w http.ResponseWriter, r *http.Request) {
 
 	commits, err := h.deps.Git.Log(r.Context(), rc.diskPath, refName, (page-1)*perPage, perPage+1)
 	if err != nil {
-		http.NotFound(w, r)
-		return
+		// An empty repository is not a 404: show the onboarding state
+		// instead. A bogus ref on a repo that has commits stays 404.
+		if !h.repoIsEmpty(r, rc) {
+			http.NotFound(w, r)
+			return
+		}
+		commits = nil
 	}
 	hasMore := false
 	if len(commits) > perPage {
@@ -332,6 +348,7 @@ func (h *Handler) repoCommits(w http.ResponseWriter, r *http.Request) {
 		ActiveTab string
 		CanManage bool
 		Commits   []git.Commit
+		EmptyRepo bool
 		Ref       string
 		Page      int
 		HasMore   bool
@@ -339,6 +356,7 @@ func (h *Handler) repoCommits(w http.ResponseWriter, r *http.Request) {
 	}{pageData: pd, Repo: rc.view, ActiveTab: "commits", CanManage: rc.canManage,
 		Commits: commits, Ref: display, Page: page, HasMore: hasMore,
 		PageURL: pageURLBuilder(r)}
+	data.EmptyRepo = err != nil || len(commits) == 0
 	h.render(w, http.StatusOK, "repo_commits.tmpl", data)
 }
 

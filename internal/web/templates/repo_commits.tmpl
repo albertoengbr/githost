@@ -19,6 +19,8 @@
   {{end}}
 </ul>
 {{template "pager" (dict "HasPrev" (gt .Page 1) "HasMore" .HasMore "PrevPage" (Sub .Page 1) "NextPage" (Add .Page 1) "PageURL" .PageURL)}}
+{{else if .EmptyRepo}}
+{{template "empty-state" (dict "Icon" "🌱" "Title" "No commits yet" "Message" "Push your first commit to this repository and it will show up here.")}}
 {{else}}
 <p class="muted">No commits on this ref.</p>
 {{end}}
