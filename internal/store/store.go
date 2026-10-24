@@ -150,6 +150,51 @@ func (s *Store) CountUsers(ctx context.Context) (int, error) {
 	return n, nil
 }
 
+// CountAdmins reports how many accounts hold the admin flag. Used to keep
+// at least one administrator on the instance.
+func (s *Store) CountAdmins(ctx context.Context) (int, error) {
+	var n int
+	if err := s.db.QueryRowContext(ctx, "SELECT count(*) FROM users WHERE is_admin = 1").Scan(&n); err != nil {
+		return 0, err
+	}
+	return n, nil
+}
+
+// UpdateUserAccount edits the mutable account fields (email, admin flag).
+// The username is immutable: it keys git remotes and repository paths.
+func (s *Store) UpdateUserAccount(ctx context.Context, userID int64, email string, isAdmin bool) error {
+	admin := 0
+	if isAdmin {
+		admin = 1
+	}
+	res, err := s.db.ExecContext(ctx,
+		"UPDATE users SET email = ?, is_admin = ?, updated_at = ? WHERE id = ?",
+		email, admin, nowUTC(), userID)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// DeleteUser removes an account and everything cascading from it
+// (sessions, SSH keys, tokens). The caller MUST refuse deletion when the
+// user still owns repositories: repositories cascade too, and authored
+// rows without a cascade (issues, PRs) block the delete via referential
+// integrity — that failure is surfaced to the admin, not swallowed.
+func (s *Store) DeleteUser(ctx context.Context, userID int64) error {
+	if _, err := s.db.ExecContext(ctx, "DELETE FROM sessions WHERE user_id = ?", userID); err != nil {
+		return fmt.Errorf("delete sessions: %w", err)
+	}
+	if _, err := s.db.ExecContext(ctx, "DELETE FROM users WHERE id = ?", userID); err != nil {
+		return fmt.Errorf("delete user: %w", err)
+	}
+	return nil
+}
+
 // SetPassword replaces a user's password hash.
 func (s *Store) SetPassword(ctx context.Context, userID int64, passwordHash string) error {
 	_, err := s.db.ExecContext(ctx, "UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?",

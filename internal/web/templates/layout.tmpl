@@ -24,6 +24,7 @@
           <summary class="whoami" aria-haspopup="menu">{{.Username}}</summary>
           <div class="menu-body">
             <a href="/new">New repository</a>
+            {{if .IsAdmin}}<a href="/admin/users">Users</a>{{end}}
             <a href="/settings/keys">SSH keys</a>
             <a href="/settings/tokens">Tokens</a>
             <a href="/settings/password">Password</a>

@@ -126,6 +126,18 @@ func Register(mux *http.ServeMux, deps Deps) (*Handler, error) {
 	// Global search.
 	mux.HandleFunc("GET /search", h.secureHandler(h.searchPage))
 
+	// Instance administration (admins only; 404 for everyone else).
+	// Item routes use literal prefixes ("edit/", "delete/") — a bare
+	// "/admin/users/{id}" wildcard would conflict with the repository
+	// patterns like GET /{owner}/{repo}/tree and panic the mux.
+	mux.HandleFunc("GET /admin/users", h.secureHandler(h.adminUsersPage))
+	mux.HandleFunc("GET /admin/users/new", h.secureHandler(h.adminUserNewPage))
+	mux.HandleFunc("POST /admin/users/new", h.secureHandler(h.adminUserCreate))
+	mux.HandleFunc("GET /admin/users/edit/{id}", h.secureHandler(h.adminUserEditPage))
+	mux.HandleFunc("POST /admin/users/edit/{id}", h.secureHandler(h.adminUserUpdate))
+	mux.HandleFunc("POST /admin/users/edit/{id}/password", h.secureHandler(h.adminUserSetPassword))
+	mux.HandleFunc("POST /admin/users/delete/{id}", h.secureHandler(h.adminUserDelete))
+
 	// Repository pages.
 	mux.HandleFunc("GET /{owner}", h.secureHandler(h.profilePage))
 	mux.HandleFunc("GET /{owner}/{repo}", h.secureHandler(h.repoHome))
@@ -322,6 +334,9 @@ func flashText(key string) string {
 		"label-created":    "Label created.",
 		"label-deleted":    "Label deleted.",
 		"release-created":  "Release published.",
+		"user-created":     "Account created.",
+		"user-updated":     "Account updated.",
+		"user-deleted":     "Account deleted.",
 		"err-bad-csrf":     "The form expired. Please try again.",
 		"err-forbidden":    "You are not allowed to do that.",
 		"err-rate-login":   "Too many attempts. Try again in a few minutes.",

@@ -507,3 +507,27 @@ body:has(#theme-toggle:checked) {
 .release-card h3 { margin: 0; }
 .release-card .badge { font-family: ui-monospace, monospace; }
 
+/* Admin user table: row actions with an inline confirm disclosure. */
+.row-actions { display: flex; gap: .5rem; align-items: center; }
+.row-confirm { position: relative; }
+.row-confirm > summary { list-style: none; cursor: pointer; }
+.row-confirm > summary::-webkit-details-marker { display: none; }
+.row-confirm-form {
+  position: absolute;
+  right: 0;
+  top: calc(100% + .3rem);
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: .4rem;
+  min-width: 15rem;
+  padding: .6rem .8rem;
+  background: var(--card);
+  border: 1px solid var(--danger);
+  border-radius: 8px;
+  box-shadow: 0 10px 28px rgb(0 0 0 / .16);
+}
+.row-confirm-form label { margin: 0; }
+.row-confirm-form .button { margin: 0; }
+
+

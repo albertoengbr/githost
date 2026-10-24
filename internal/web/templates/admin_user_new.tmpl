@@ -1,0 +1,27 @@
+{{define "content"}}
+<div class="page-head">
+  <h1>New user</h1>
+</div>
+
+<div class="card narrow">
+  {{if .FormError}}<div class="flash flash-err" role="status">{{.FormError}}</div>{{end}}
+  <form method="post" action="/admin/users/new">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <label>Username
+      <input name="username" value="{{.Username}}" required pattern="[A-Za-z0-9][A-Za-z0-9._-]*" maxlength="39" autofocus>
+    </label>
+    <label>Email
+      <input name="email" type="email" value="{{.Email}}" maxlength="254">
+    </label>
+    <label>Password
+      <input name="password" type="password" required minlength="8" autocomplete="new-password">
+    </label>
+    <label>Confirm password
+      <input name="confirm_password" type="password" required minlength="8" autocomplete="new-password">
+    </label>
+    <label class="checkbox"><input type="checkbox" name="is_admin" value="1">
+      Administrator (can manage users, tokens and every repository)</label>
+    <button type="submit">Create account</button>
+  </form>
+</div>
+{{end}}
