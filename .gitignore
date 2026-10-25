@@ -1,6 +1,13 @@
 # Build output
 /bin/
 /dist/
+/githost
+/githost.exe
+*.exe
+*.test
+*.out
+*.prof
+coverage.*
 
 # A checkout can double as a dev instance; instance state is never committed
 /githost.yaml
@@ -8,15 +15,17 @@
 *.db
 *.db-wal
 *.db-shm
+secret.key
 
-# Go test artifacts
-*.test
-*.prof
+# Logs
+*.log
 
-# OS noise
+# Editor and OS noise
+.idea/
+.vscode/
+*.swp
 .DS_Store
 Thumbs.db
 
-# accidental device-name artifacts
+# Accidental Windows device-name artifact
 NUL
-githost.exe

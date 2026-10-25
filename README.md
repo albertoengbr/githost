@@ -5,9 +5,10 @@ small-team use: a single Go binary that hosts Git repositories, serves them
 over HTTPS and SSH, and provides a web interface, REST API, issues, pull
 requests and releases — without depending on any external service.
 
-> **Status:** F0 (Foundation) — see [docs/status.md](docs/status.md) for the
-> authoritative feature state. Git transports (clone/push/pull) arrive in
-> F1; until then this repository contains the server foundation only.
+> **Status:** F0–F6 complete — see [docs/status.md](docs/status.md) for the
+> authoritative feature state. GitHost ships Git transports (clone/push/pull
+> over HTTPS and SSH), a web UI, a REST API, issues, pull requests, releases,
+> labels, webhooks, search and admin user management.
 
 ## Design goals
 
@@ -77,4 +78,7 @@ technical references only (see docs/research/); no code is copied from them.
 
 ## License
 
-Apache-2.0 — see [LICENSE](LICENSE).
+Apache-2.0 — see [LICENSE](LICENSE) and [NOTICE](NOTICE).
+
+Copyright © 2026 Eng. Alberto José Oliveira Pereira
+<alberto@alberto.eng.br>
