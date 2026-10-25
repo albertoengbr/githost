@@ -22,7 +22,7 @@ $ git --version
 ## 1. Download and verify a release
 
 ```console
-$ VERSION=0.1.0   # replace with the latest release
+$ VERSION=0.1.1   # replace with the latest release
 $ curl -LO "https://github.com/albertoengbr/githost/releases/download/v${VERSION}/githost_${VERSION}_linux_amd64.tar.gz"
 $ curl -LO "https://github.com/albertoengbr/githost/releases/download/v${VERSION}/SHA256SUMS.txt"
 $ sha256sum --check --ignore-missing SHA256SUMS.txt
@@ -61,7 +61,7 @@ Start the server:
 
 ```console
 $ githost serve
-githost 0.1.0 listening on http://127.0.0.1:3000
+githost 0.1.1 listening on http://127.0.0.1:3000
 ```
 
 Leave it running and continue in another terminal, or stop it with `Ctrl+C`
@@ -144,7 +144,7 @@ $ sudo systemctl daemon-reload
 $ sudo systemctl enable --now githost
 $ sudo systemctl status githost --no-pager
 $ curl -s http://127.0.0.1:3000/healthz
-{"database":"ok","status":"ok","version":"0.1.0"}
+{"database":"ok","status":"ok","version":"0.1.1"}
 ```
 
 Logs: `journalctl -u githost -f`.

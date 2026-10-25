@@ -50,7 +50,7 @@ Download `githost_<version>_<os>_<arch>.tar.gz` from the
 against `SHA256SUMS.txt`, extract it, then run the same quickstart:
 
 ```console
-$ tar -xzf githost_0.1.0_linux_amd64.tar.gz
+$ tar -xzf githost_0.1.1_linux_amd64.tar.gz
 $ ./githost init
 $ ./githost admin create-user --username admin --admin --password-stdin
 $ ./githost serve
@@ -60,7 +60,7 @@ Useful checks:
 
 ```console
 $ curl -s http://127.0.0.1:3000/healthz
-{"status":"ok","database":"ok","version":"0.1.0-dev"}
+{"status":"ok","database":"ok","version":"0.1.1-dev"}
 $ ./githost doctor
 ```
 
