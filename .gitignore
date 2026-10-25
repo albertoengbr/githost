@@ -3,6 +3,7 @@
 /dist/
 /githost
 /githost.exe
+/githost.exe~
 *.exe
 *.test
 *.out
