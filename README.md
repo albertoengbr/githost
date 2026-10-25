@@ -32,7 +32,25 @@ requests and releases — without depending on any external service.
 ```console
 $ go build -o githost ./cmd/githost
 $ ./githost init          # creates githost.yaml, data/, secret, database
+$ ./githost admin create-user --username admin --admin --password-stdin
 $ ./githost serve         # http://127.0.0.1:3000
+```
+
+Public registration is disabled: accounts are created by the operator. The
+first account created on a fresh instance becomes an administrator
+automatically (`--admin` makes it explicit for later accounts).
+
+### From a release archive
+
+Download `githost_<version>_<os>_<arch>.tar.gz` from the
+[releases page](https://github.com/albertoengbr/githost/releases), verify it
+against `SHA256SUMS.txt`, extract it, then run the same quickstart:
+
+```console
+$ tar -xzf githost_0.1.0_linux_amd64.tar.gz
+$ ./githost init
+$ ./githost admin create-user --username admin --admin --password-stdin
+$ ./githost serve
 ```
 
 Useful checks:
