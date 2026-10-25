@@ -5,7 +5,8 @@
 set -e
 cd "$(dirname "$0")/.."
 
-VERSION=${VERSION:-$(git describe --tags --always --dirty 2>/dev/null || echo 0.0.0-dev)}
+VERSION=${VERSION:-$(git describe --tags --always --dirty 2>/dev/null | sed 's/^v//')}
+VERSION=${VERSION:-0.1.0-dev}
 COMMIT=${COMMIT:-$(git rev-parse --short HEAD 2>/dev/null || echo none)}
 
 ./scripts/cross-compile.sh
