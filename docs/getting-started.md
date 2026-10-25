@@ -232,16 +232,26 @@ The SSH endpoint is exec-only: it accepts `git-upload-pack` and
 
 ## 6. Change the admin password
 
-The walkthrough password is public, so change it on any non-local instance:
+The walkthrough password is public, so change it on any non-local instance.
+
+From the web interface:
 
 1. User menu → **Password**.
 2. Enter the current password (`GitHost2026!`), then the new one twice.
 3. Submit. **Every session of the account is invalidated** — sign in again with
    the new password.
 
-Administrators can also reset another account's password under
-**Users → Edit → Reset password**; that also invalidates all sessions of the
-target account.
+From the server shell, for example when the password is lost:
+
+```console
+$ sudo -u githost githost admin set-password \
+    --config /etc/githost/githost.yaml \
+    --username admin --password-stdin
+```
+
+Type the new password when prompted (policy: at least 8 characters). The
+command also invalidates every session of the account. Administrators can reset
+another account's password under **Users → Edit → Reset password**.
 
 ## 7. Troubleshooting first access
 
@@ -251,7 +261,7 @@ target account.
 | *"The form expired. Please try again."* on login | The CSRF cookie was not kept. Use one hostname consistently (no mix of `localhost` and `127.0.0.1`) and allow cookies. |
 | Page unreachable from another machine | `server.address` is `127.0.0.1` by default. Use a TLS reverse proxy or bind `0.0.0.0` on a trusted network, and open the firewall. |
 | `systemctl status` shows permission errors on the database | Run `init`/`admin` commands as the service user with the same config: `sudo -u githost githost ... --config /etc/githost/githost.yaml`. |
-| Account exists but the password is lost | There is no CLI password reset. Create a second admin (`--username admin2 --admin`) and reset the first under **Users → Edit → Reset password**. |
+| Account exists but the password is lost | Reset it from the server shell: `githost admin set-password --username admin --password-stdin` (add `--config` when not in the instance directory). All sessions are invalidated. |
 | `database is dirty: applied version NNNN is not present` | The binary is older than the schema. Use the same or a newer release; never downgrade in place. |
 | Login succeeds but every page redirects to `/login` | Cookies are blocked or the instance is reached through two different origins. Use a single origin (the proxy's public hostname). |
 | Push asks for a password again | Use an access token with `repo:write` as the password, not the account password. |

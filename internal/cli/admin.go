@@ -84,6 +84,8 @@ func runAdmin(ctx context.Context, args []string, stdin io.Reader, stdout, stder
 	switch sub {
 	case "create-user":
 		return runAdminCreateUser(ctx, rest, stdin, stdout, stderr)
+	case "set-password":
+		return runAdminSetPassword(ctx, rest, stdin, stdout, stderr)
 	case "create-token":
 		return runAdminCreateToken(ctx, rest, stdout, stderr)
 	case "add-ssh-key":
@@ -105,6 +107,7 @@ func adminUsage(w io.Writer) {
 
 Subcommands:
   create-user    Create a user account (first user becomes an admin)
+  set-password   Change a user's password (invalidates all sessions)
   create-token   Create an access token for a user
   add-ssh-key    Register a public SSH key for a user
   list-users     List user accounts
@@ -177,6 +180,72 @@ func runAdminCreateUser(ctx context.Context, args []string, stdin io.Reader, std
 	if makeAdmin && !*isAdmin {
 		fmt.Fprintln(stdout, "note: first account on this instance was made an administrator")
 	}
+	return 0
+}
+
+func runAdminSetPassword(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+	fs := newFlagSet("admin set-password", "githost admin set-password --username NAME [flags]", stderr)
+	cfgPath := configFlag(fs)
+	username := fs.String("username", "", "account name")
+	password := fs.String("password", "", "password (testing convenience; prefer --password-stdin)")
+	passwordStdin := fs.Bool("password-stdin", false, "read the password from standard input")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if *username == "" {
+		fmt.Fprintln(stderr, "githost: --username is required")
+		return 2
+	}
+	*username = store.NormalizeUsername(*username)
+
+	var plain string
+	switch {
+	case *passwordStdin:
+		line, err := bufio.NewReader(stdin).ReadString('\n')
+		if err != nil && line == "" {
+			fmt.Fprintln(stderr, "githost: reading password from stdin:", err)
+			return 1
+		}
+		plain = strings.TrimSpace(line)
+	case *password != "":
+		plain = *password
+	default:
+		fmt.Fprintln(stderr, "githost: provide --password-stdin (recommended) or --password")
+		return 2
+	}
+
+	in, err := openInstance(ctx, *cfgPath)
+	if err != nil {
+		fmt.Fprintf(stderr, "githost: %v\n", err)
+		return 1
+	}
+	defer in.Close()
+
+	user, err := in.st.UserByUsername(ctx, *username)
+	if err != nil {
+		fmt.Fprintf(stderr, "githost: user %q not found\n", *username)
+		return 1
+	}
+	if err := auth.ValidatePasswordPolicy(plain); err != nil {
+		fmt.Fprintf(stderr, "githost: %v\n", err)
+		return 1
+	}
+	hash, err := auth.HashPassword(plain)
+	if err != nil {
+		fmt.Fprintf(stderr, "githost: %v\n", err)
+		return 1
+	}
+	if err := in.st.SetPassword(ctx, user.ID, hash); err != nil {
+		fmt.Fprintf(stderr, "githost: %v\n", err)
+		return 1
+	}
+	// A password change must end every live session of the account, so a
+	// stolen cookie cannot outlive the credential it was created with.
+	if err := in.st.DeleteUserSessions(ctx, user.ID); err != nil {
+		fmt.Fprintf(stderr, "githost: password updated, but invalidating sessions failed: %v\n", err)
+		return 1
+	}
+	fmt.Fprintf(stdout, "password updated for %s (all sessions invalidated)\n", user.Username)
 	return 0
 }
 

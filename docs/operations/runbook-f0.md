@@ -48,6 +48,7 @@ accounts locally:
 
 ```console
 $ ./githost admin create-user --username alice --password-stdin   # first user = admin
+$ ./githost admin set-password --username alice --password-stdin  # ends all sessions
 $ ./githost admin create-token --username alice --scope repo:read --scope repo:write
 $ ./githost admin add-ssh-key --username alice --key-file ~/.ssh/id_ed25519.pub
 $ ./githost admin list-users

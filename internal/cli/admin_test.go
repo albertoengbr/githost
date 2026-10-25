@@ -1,15 +1,31 @@
 package cli
 
 import (
+	"bytes"
+	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	"githost.dev/githost/internal/auth"
+	"githost.dev/githost/internal/store"
 
 	"golang.org/x/crypto/ssh"
 )
+
+// runForTestWithInput is runForTest with a caller-supplied stdin, used by
+// commands that read a password from standard input.
+func runForTestWithInput(t *testing.T, input string, args ...string) (int, string, string) {
+	t.Helper()
+	var stdout, stderr bytes.Buffer
+	code := Run(context.Background(), args, strings.NewReader(input), &stdout, &stderr)
+	return code, stdout.String(), stderr.String()
+}
 
 // initInstance runs `githost init` against a fresh directory and returns
 // the config path.
@@ -66,6 +82,105 @@ func TestAdminCreateUserNeedsStdin(t *testing.T) {
 		"--config", cfgPath, "--username", "alice")
 	if code != 2 {
 		t.Fatalf("exit = %d, want 2", code)
+	}
+}
+
+func TestAdminSetPassword(t *testing.T) {
+	cfgPath := initInstance(t)
+	if code, _, stderr := runForTest(t, "admin", "create-user",
+		"--config", cfgPath, "--username", "alice", "--password-stdin"); code != 0 {
+		t.Fatalf("create-user: %s", stderr)
+	}
+
+	// A live session must not survive the password change.
+	ctx := context.Background()
+	in, err := openInstance(ctx, cfgPath)
+	if err != nil {
+		t.Fatalf("open instance: %v", err)
+	}
+	alice, err := in.st.UserByUsername(ctx, "alice")
+	if err != nil {
+		t.Fatalf("lookup alice: %v", err)
+	}
+	if err := in.st.CreateSession(ctx, "session-under-test", alice.ID,
+		time.Now().Add(time.Hour), "127.0.0.1", "test"); err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	in.Close()
+
+	// Username lookup is case-insensitive; the password comes from stdin.
+	code, stdout, stderr := runForTestWithInput(t, "brand-new-password-9\n",
+		"admin", "set-password", "--config", cfgPath,
+		"--username", "Alice", "--password-stdin")
+	if code != 0 {
+		t.Fatalf("set-password exit=%d: %s", code, stderr)
+	}
+	if !strings.Contains(stdout, "alice") || !strings.Contains(stdout, "sessions invalidated") {
+		t.Fatalf("unexpected output: %q", stdout)
+	}
+
+	in, err = openInstance(ctx, cfgPath)
+	if err != nil {
+		t.Fatalf("reopen instance: %v", err)
+	}
+	defer in.Close()
+	alice, err = in.st.UserByUsername(ctx, "alice")
+	if err != nil {
+		t.Fatalf("lookup alice again: %v", err)
+	}
+	if ok, err := auth.VerifyPassword("brand-new-password-9", alice.PasswordHash); err != nil || !ok {
+		t.Fatalf("new password does not verify: ok=%v err=%v", ok, err)
+	}
+	if ok, _ := auth.VerifyPassword(strings.TrimSpace(testPassword), alice.PasswordHash); ok {
+		t.Fatal("old password still verifies after set-password")
+	}
+	if _, err := in.st.SessionByHash(ctx, "session-under-test"); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("session survived the password change: err=%v", err)
+	}
+}
+
+func TestAdminSetPasswordErrors(t *testing.T) {
+	cfgPath := initInstance(t)
+	if code, _, stderr := runForTest(t, "admin", "create-user",
+		"--config", cfgPath, "--username", "alice", "--password-stdin"); code != 0 {
+		t.Fatalf("create-user: %s", stderr)
+	}
+
+	// Password policy failure.
+	code, _, stderr := runForTestWithInput(t, "short\n",
+		"admin", "set-password", "--config", cfgPath,
+		"--username", "alice", "--password-stdin")
+	if code != 1 || !strings.Contains(stderr, "password") {
+		t.Fatalf("short password exit=%d stderr=%q", code, stderr)
+	}
+
+	// Unknown account.
+	code, _, _ = runForTestWithInput(t, "brand-new-password-9\n",
+		"admin", "set-password", "--config", cfgPath,
+		"--username", "ghost", "--password-stdin")
+	if code != 1 {
+		t.Fatalf("unknown user exit=%d, want 1", code)
+	}
+
+	// Missing password source is a usage error.
+	code, _, _ = runForTest(t, "admin", "set-password",
+		"--config", cfgPath, "--username", "alice")
+	if code != 2 {
+		t.Fatalf("missing password source exit=%d, want 2", code)
+	}
+
+	// Missing username is a usage error.
+	code, _, _ = runForTest(t, "admin", "set-password", "--config", cfgPath)
+	if code != 2 {
+		t.Fatalf("missing username exit=%d, want 2", code)
+	}
+
+	// --password also works (the discouraged non-interactive path).
+	code, _, stderr = runForTest(t, "admin", "set-password",
+		"--config", cfgPath, "--username", "alice",
+		"--password", "another-good-password-7")
+	if code != 0 {
+		t.Fatalf("--password exit=%d: %s", code, stderr)
 	}
 }
 
