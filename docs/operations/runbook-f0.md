@@ -3,6 +3,9 @@
 How to install, run and operate a GitHost instance. Update this file with
 every phase.
 
+> New to GitHost? The [first-access tutorial](../getting-started.md) walks
+> through installation, admin creation and the first login step by step.
+
 ## Requirements
 
 - Windows/Linux/macOS/BSD on amd64 (arm64 builds exist; see

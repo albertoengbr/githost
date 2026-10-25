@@ -6,6 +6,7 @@ determine what works.
 
 | Document | Purpose |
 |---|---|
+| [getting-started.md](getting-started.md) | First-access tutorial: install from a release, create the admin, log in, push the first commit |
 | [requirements.md](requirements.md) | Requirements specification (functional, non-functional, security, constraints) |
 | [roadmap.md](roadmap.md) | Phases F0–F6, acceptance criteria, current state |
 | [status.md](status.md) | Per-feature state: NOT_STARTED / SPECIFIED / IMPLEMENTING / TESTING / BLOCKED / ACCEPTED, with evidence |

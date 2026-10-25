@@ -40,6 +40,9 @@ Public registration is disabled: accounts are created by the operator. The
 first account created on a fresh instance becomes an administrator
 automatically (`--admin` makes it explicit for later accounts).
 
+For a complete Debian walkthrough — install, create the admin, first login and
+first push — see the **[first-access tutorial](docs/getting-started.md)**.
+
 ### From a release archive
 
 Download `githost_<version>_<os>_<arch>.tar.gz` from the
@@ -81,6 +84,7 @@ On Windows use `scripts\verify.ps1` and `scripts\cross-compile.ps1`.
 
 ## Documentation
 
+- [docs/getting-started.md](docs/getting-started.md) — **first-access tutorial** (install, admin creation, login, first push)
 - [docs/status.md](docs/status.md) — **source of truth** for progress
 - [docs/requirements.md](docs/requirements.md) — requirements specification
 - [docs/roadmap.md](docs/roadmap.md) — phases F0–F6 and acceptance criteria
