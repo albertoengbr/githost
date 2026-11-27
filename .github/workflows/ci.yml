@@ -65,7 +65,7 @@ jobs:
       - name: build matrix
         run: ./scripts/cross-compile.sh
       - name: upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: githost-matrix
           path: dist/
@@ -90,7 +90,7 @@ jobs:
       - name: build archives + checksums
         run: ./scripts/package.sh
       - name: upload workflow artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: githost-release
           path: |
