@@ -142,6 +142,13 @@ func (h *Handler) mfaDisable(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/settings/mfa?msg=err-bad-request", http.StatusSeeOther)
 		return
 	}
+	// A valid-but-replayed code must not be enough to disable MFA.
+	claimed, err := h.deps.Store.ClaimTOTPStep(ctx, su.User.ID, totp.CurrentStep())
+	if err != nil || !claimed {
+		h.logger.Error("mfa_disable_step_rejected", "err", err)
+		http.Redirect(w, r, "/settings/mfa?msg=err-bad-request", http.StatusSeeOther)
+		return
+	}
 
 	_ = h.deps.Store.SetMFAEnabled(ctx, su.User.ID, false)
 	_ = h.deps.Store.SetTOTPSecret(ctx, su.User.ID, "")
@@ -201,7 +208,8 @@ func (h *Handler) mfaChallengeVerify(w http.ResponseWriter, r *http.Request) {
 	// Throttle second-factor guessing with the same policy as login,
 	// under a distinct key so the post-password Reset cannot refresh it.
 	key := "mfa|" + clientIP(r) + "|" + su.User.Username
-	if !h.deps.Limiter.Allow(key) {
+	accountKey := "mfa-acct|" + su.User.Username
+	if !h.deps.Limiter.Allow(key) || !h.deps.Limiter.Allow(accountKey) {
 		_ = h.deps.Store.Audit(r.Context(), &su.User.ID, "auth.mfa_rate_limited", su.User.Username, "web")
 		http.Redirect(w, r, "/mfa/challenge?msg=err", http.StatusSeeOther)
 		return
@@ -210,15 +218,26 @@ func (h *Handler) mfaChallengeVerify(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	code := strings.TrimSpace(r.PostFormValue("code"))
 	verified := false
+	totpMatched := false
 
 	// Try TOTP first. A database error must fail closed, not fall
-	// through to the recovery-code path.
+	// through to the recovery-code path. A code that verifies is only
+	// accepted after atomically claiming the current time step, which
+	// makes a replay inside the ±1 window fail.
 	encrypted, err := h.deps.Store.GetTOTPSecret(ctx, su.User.ID)
 	switch {
 	case err == nil && encrypted != "":
 		secret, decErr := totp.DecryptSecret(encrypted, h.deps.InstanceSecret)
 		if decErr == nil && totp.Verify(code, secret) {
-			verified = true
+			totpMatched = true
+			claimed, claimErr := h.deps.Store.ClaimTOTPStep(ctx, su.User.ID, totp.CurrentStep())
+			if claimErr != nil {
+				failServer(claimErr, "mfa_step_claim_failed")
+				return
+			}
+			if claimed {
+				verified = true
+			}
 		}
 	case err == nil:
 		// No TOTP secret configured; fall through to recovery codes.
@@ -227,8 +246,9 @@ func (h *Handler) mfaChallengeVerify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Try a recovery code when TOTP did not verify.
-	if !verified {
+	// Try a recovery code only when TOTP did not match at all — a
+	// replayed TOTP code must not fall through to this path.
+	if !verified && !totpMatched {
 		ok, err := h.deps.Store.TryRecoveryCode(ctx, su.User.ID, code)
 		if err != nil {
 			failServer(err, "mfa_recovery_lookup_failed")
@@ -250,6 +270,7 @@ func (h *Handler) mfaChallengeVerify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.deps.Limiter.Reset(key)
+	h.deps.Limiter.Reset(accountKey)
 	_ = h.deps.Store.Audit(ctx, &su.User.ID, "auth.login_mfa_passed", su.User.Username, "web")
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }

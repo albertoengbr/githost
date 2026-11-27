@@ -14,7 +14,7 @@ determine what works.
 | [specifications/](specifications/) | Phase specifications with verifiable acceptance criteria |
 | [research/](research/) | Reference project studies (Gogs, Gitea, Forgejo, Git protocols) and dependency audits |
 | [security/](security/) | Threat model and security requirements |
-| [testing/](testing/) | Test strategy and recorded evidence |
+| [testing/](testing/) | Test strategy, phase evidence and [post-F6 security evidence](testing/security-evidence.md) |
 | [compatibility/](compatibility/) | Platform support matrix (validated vs cross-compiled only) |
 | [operations/](operations/) | Runbooks: install, run, upgrade, backup/restore |
 | [adr/](adr/) | Architecture Decision Records |

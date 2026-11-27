@@ -81,6 +81,24 @@ func TestTokenGeneration(t *testing.T) {
 	}
 }
 
+func TestVerifyDummy(t *testing.T) {
+	hash := DummyHash()
+	if hash == "" {
+		t.Fatal("DummyHash returned an empty hash")
+	}
+	ok, err := VerifyPassword("not-a-real-password", hash)
+	if err != nil || !ok {
+		t.Fatalf("dummy hash does not verify its own password: ok=%v err=%v", ok, err)
+	}
+	// The helper must be safe to call repeatedly and never panic.
+	for i := 0; i < 3; i++ {
+		VerifyDummy("guess")
+	}
+	if DummyHash() != hash {
+		t.Fatal("DummyHash must be generated once")
+	}
+}
+
 func TestScopes(t *testing.T) {
 	if err := ValidateScopes("repo:read repo:write"); err != nil {
 		t.Fatalf("valid scopes rejected: %v", err)

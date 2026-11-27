@@ -4,7 +4,8 @@
 IMPLEMENTING, TESTING, BLOCKED, ACCEPTED. Evidence is required for
 ACCEPTED; percentages are never used.
 
-Last updated: 2026-10-21 (security fixes + UI enhancement pass)
+Last updated: 2026-11-27 (post-F6 security hardening pass — see
+[testing/security-evidence.md](testing/security-evidence.md))
 
 ## Phase summary
 
@@ -63,7 +64,7 @@ Last updated: 2026-10-21 (security fixes + UI enhancement pass)
 | Ops | Docker Linux image | ACCEPTED | packaging/docker; built + init/doctor/serve smoke tested |
 | Ops | systemd (hardened) / launchd / rc.d units | ACCEPTED | packaging/; guarded by tests/packaging_test.go |
 | Ops | CI workflow (matrix + race + package) | ACCEPTED (defined) | .github/workflows/ci.yml; YAML-drift test |
-| Ops | Backup/restore | NOT_STARTED | F3 |
+| Ops | Backup/restore | ACCEPTED | F3; create/validate/restore/prune rows above |
 | Collab | Safe Markdown rendering (goldmark, XSS corpus tested) | ACCEPTED | internal/markdown (+tests) |
 | Collab | Issues: create/comment/close/reopen, labels, history | ACCEPTED | store/issues.go, web/handlers_collab.go |
 | Collab | Pull Requests: create/detail with commits+diff+conflicts | ACCEPTED | internal/prservice (+e2e) |
@@ -71,7 +72,9 @@ Last updated: 2026-10-21 (security fixes + UI enhancement pass)
 | Collab | Merge: 3 strategies (merge-commit/squash/ff-only) | ACCEPTED | git/merge.go plumbing; CAS on update-ref |
 | Collab | Branch protection (require_approval, glob patterns) | ACCEPTED | prservice.Merge; e2e proof |
 | Collab | Conflict detection (merge-tree --write-tree) | ACCEPTED | git ≥ 2.38; doctor checks floor |
-| Collab | Releases with assets / Wiki / LFS / MFA | NOT_STARTED | F5+ (see roadmap notes) |
+| Collab | Releases with assets | ACCEPTED | web/handlers_releases.go; F5/F6 pass |
+| Collab | MFA (TOTP + recovery codes) | ACCEPTED | internal/totp + handlers_mfa; replay-protected |
+| Collab | Git-backed Wiki / Git LFS | DEFERRED | post-MVP enhancement, not in F0–F6 charter |
 | Integ | Event bus (internal, synchronous) | ACCEPTED | internal/events (+tests); kinds: push, issue, PR |
 | Integ | Webhooks with HMAC-SHA256 signatures + delivery records | ACCEPTED | internal/webhooks (+tests with httptest) |
 | Integ | Repository import from remote URLs | ACCEPTED | internal/importsvc; http/https/git only |
@@ -80,8 +83,16 @@ Last updated: 2026-10-21 (security fixes + UI enhancement pass)
 | Expand | Search across issues and repositories | ACCEPTED | store.SearchIssues/SearchRepos (LIKE-based) |
 | Expand | Package registry with sha256 integrity | ACCEPTED | packages table; 100 MiB cap; metadata field |
 | Expand | Extension points (new event kinds, job kinds) | ACCEPTED | events.Bus.Subscribe + jobs kinds are one const |
-| Integrations | Webhooks/import/mirror/schedulers/runners | NOT_STARTED | F5 |
-| Expansion | Registry/search/extensions | NOT_STARTED | F6 |
+| Security | Webhook SSRF guard (registration + dial) + private-CIDR allowlist | ACCEPTED | internal/webhooks; T9 evidence |
+| Security | Webhook secrets sealed at rest + mandatory signature | ACCEPTED | internal/security/seal.go; migration on startup; T10 evidence |
+| Security | TOTP replay protection | ACCEPTED | migration 0007 + ClaimTOTPStep; T11 evidence |
+| Security | Token revocation on password change/reset | ACCEPTED | store.RevokeAllUserTokens in all three paths; T12 evidence |
+| Security | Per-account login/MFA throttling + timing equalization | ACCEPTED | auth.VerifyDummy + account limiter keys; T12 evidence |
+| Security | Trusted-proxy headers + optional concurrency cap | ACCEPTED | internal/httpserver/proxy.go; config opt-in |
+| Security | Retention job handlers for audit events and webhook deliveries | ACCEPTED (handler) | jobs.prune_*; 90 days default; enqueue path still pending (same as pre-existing job kinds) |
+| Security | govulncheck in CI + Dependabot | ACCEPTED (informative) | ci.yml `vuln` job; .github/dependabot.yml |
+| Integrations | Webhooks/import/mirror/schedulers/runners | ACCEPTED | F5; see Integ rows above |
+| Expansion | Registry/search/extensions | ACCEPTED | F6; see Expand rows above |
 
 ## Known limitations (current)
 
@@ -105,9 +116,10 @@ Last updated: 2026-10-21 (security fixes + UI enhancement pass)
 7. **SSH shutdown** lets in-flight sessions finish (bounded by the
    10-minute executor timeout).
 8. **Hooks**: no server-side receive hooks yet (F4 branch protection).
-9. **API surface**: issues and pull requests endpoints arrive with F4.
-10. **Password change / MFA**: no self-service password change yet; MFA
-    is F4 scope.
+9. **API surface**: issues and pull requests endpoints are in the F4
+    service layer; `/api/v1` still exposes the 10 original endpoints.
+10. **Password change / MFA**: both are implemented; password changes
+    revoke all sessions and tokens, and MFA codes are single-use per step.
 
 ## Next task
 
@@ -124,5 +136,15 @@ gate, fail-closed checks, challenge rate limit), PR self-review blocked
 dial guard, and the UI gained search, webhook management, releases,
 labels, line-numbered blobs, pagination, a user menu, empty states and
 a manual dark theme (still zero-JavaScript).
+
+The 2026-11-27 pass landed the security hardening tracked as T9–T12 in
+[security/threat-model.md](security/threat-model.md): SSRF registration
+guard with opt-in private CIDRs and no redirects, sealed webhook secrets
+with mandatory signing, atomic TOTP replay protection (migration 0007),
+token revocation on every password change path, per-account login/MFA
+throttling with Argon2 timing equalization, trusted-proxy handling, an
+optional HTTP concurrency cap, retention jobs for audit/delivery rows,
+and supply-chain scanning (govulncheck + Dependabot). Evidence:
+[testing/security-evidence.md](testing/security-evidence.md).
 
 

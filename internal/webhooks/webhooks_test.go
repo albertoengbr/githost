@@ -15,6 +15,7 @@ import (
 	"githost.dev/githost/internal/auth"
 	"githost.dev/githost/internal/database"
 	"githost.dev/githost/internal/events"
+	"githost.dev/githost/internal/security"
 	"githost.dev/githost/internal/store"
 	"githost.dev/githost/migrations"
 )
@@ -66,7 +67,7 @@ func newFixture(t *testing.T) *fixture {
 	t.Cleanup(srv.Close)
 
 	return &fixture{
-		deliverer: newWithClient(st, nil, &http.Client{Timeout: DeliveryTimeout}),
+		deliverer: newWithClient(st, nil, &http.Client{Timeout: DeliveryTimeout}, ""),
 		store:     st,
 		repo:      repo,
 		received:  received,
@@ -75,23 +76,64 @@ func newFixture(t *testing.T) *fixture {
 }
 
 // TestForbiddenWebhookIP pins the dial-time SSRF guard: loopback,
-// unspecified, link-local and multicast targets are never dialable.
+// unspecified, link-local, multicast and private/special targets are
+// never dialable unless an operator explicitly allowlists the range.
 func TestForbiddenWebhookIP(t *testing.T) {
 	blocked := []string{
 		"127.0.0.1", "::1", "0.0.0.0", "::",
 		"169.254.1.1", "fe80::1", "224.0.0.1", "ff02::1",
+		"10.0.0.5", "192.168.1.10", "172.16.0.2", "100.64.0.1",
+		"fc00::1", "::ffff:127.0.0.1",
 	}
 	for _, s := range blocked {
-		if !forbiddenWebhookIP(net.ParseIP(s)) {
+		if !forbiddenWebhookIP(net.ParseIP(s), nil) {
 			t.Errorf("forbiddenWebhookIP(%s) = false, want true", s)
 		}
 	}
-	// Private LAN ranges stay allowed (internal CI is a legit target).
-	allowed := []string{"10.0.0.5", "192.168.1.10", "172.16.0.2"}
-	for _, s := range allowed {
-		if forbiddenWebhookIP(net.ParseIP(s)) {
+	// Public targets are always fine.
+	for _, s := range []string{"8.8.8.8", "2001:4860:4860::8888", "1.1.1.1"} {
+		if forbiddenWebhookIP(net.ParseIP(s), nil) {
 			t.Errorf("forbiddenWebhookIP(%s) = true, want false", s)
 		}
+	}
+	// An explicit allowlist opts a private range back in.
+	allowed, err := parseAllowedCIDRs([]string{"10.0.0.0/8"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if forbiddenWebhookIP(net.ParseIP("10.0.0.5"), allowed) {
+		t.Error("allowlisted private address was still forbidden")
+	}
+	if !forbiddenWebhookIP(net.ParseIP("192.168.1.10"), allowed) {
+		t.Error("private address outside the allowlist was allowed")
+	}
+	// Loopback stays blocked even when an allowlist would cover it.
+	loopback, err := parseAllowedCIDRs([]string{"127.0.0.0/8"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !forbiddenWebhookIP(net.ParseIP("127.0.0.1"), loopback) {
+		t.Error("loopback target was allowed by CIDR allowlist")
+	}
+}
+
+func TestValidateWebhookURL(t *testing.T) {
+	if err := ValidateWebhookURL("https://8.8.8.8/hook"); err != nil {
+		t.Fatalf("public URL rejected: %v", err)
+	}
+	for _, raw := range []string{
+		"http://127.0.0.1:8080/hook",
+		"http://10.0.0.5/hook",
+		"http://169.254.169.254/latest/meta-data/",
+		"https://user:pass@ci.example.test/hook",
+		"ftp://ci.example.test/hook",
+	} {
+		if err := ValidateWebhookURL(raw); err == nil {
+			t.Errorf("ValidateWebhookURL(%q) accepted a forbidden URL", raw)
+		}
+	}
+	if err := ValidateWebhookURL("http://10.0.0.5/hook", "10.0.0.0/8"); err != nil {
+		t.Fatalf("allowlisted private URL rejected: %v", err)
 	}
 }
 
@@ -143,6 +185,65 @@ func TestWebhookDelivery(t *testing.T) {
 	}
 	if !deliveries[0].Success || deliveries[0].StatusCode != 200 {
 		t.Fatalf("delivery = %+v", deliveries[0])
+	}
+}
+
+func TestSealedSecretDeliveryAndMandatorySignature(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	instanceSecret := "0123456789abcdef0123456789abcdef"
+
+	sealed, err := security.Seal("a-secret-long-enough", instanceSecret)
+	if err != nil {
+		t.Fatal(err)
+	}
+	signedHook, err := f.store.CreateWebhook(ctx, f.repo.ID, f.server.URL, sealed, "push")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// An unsigned hook must never be delivered.
+	unsignedHook, err := f.store.CreateWebhook(ctx, f.repo.ID, f.server.URL, "", "push")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	d := newWithClient(f.store, nil, &http.Client{Timeout: DeliveryTimeout}, instanceSecret)
+	bus := events.New(nil)
+	d.SubscribeHooks(bus)
+	bus.Emit(ctx, events.Event{Kind: events.KindPush, Repository: f.repo.Owner + "/" + f.repo.Name,
+		Actor: "alice", Detail: `{}`})
+
+	select {
+	case body := <-f.received:
+		if body == "" {
+			t.Fatal("empty payload")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("sealed-secret webhook delivery timed out")
+	}
+	// Deliveries are recorded asynchronously. Poll the database instead of
+	// relying on a timing window: only the signed hook may have a record.
+	deadline := time.After(3 * time.Second)
+	for {
+		records, err := f.store.RecentDeliveries(ctx, signedHook.ID, 5)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(records) > 0 {
+			break
+		}
+		select {
+		case <-deadline:
+			t.Fatal("signed webhook delivery was not recorded")
+		case <-time.After(50 * time.Millisecond):
+		}
+	}
+	unsigned, err := f.store.RecentDeliveries(ctx, unsignedHook.ID, 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(unsigned) != 0 {
+		t.Fatalf("unsigned webhook produced %d delivery records", len(unsigned))
 	}
 }
 

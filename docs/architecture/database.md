@@ -49,7 +49,7 @@ what shipped.
 
 | Entity | Purpose | Key columns (sketch) | Phase |
 |---|---|---|---|
-| users | accounts | id, username (unique), email, argon2id_hash, is_admin, created_at | F1 |
+| users | accounts | id, username (unique), email, password_hash (Argon2id), is_admin, totp_secret (sealed), last_totp_step (replay guard), created_at | F1/F5/post-F6 |
 | sessions | web sessions | id (token hash), user_id, expires_at, created_at, ip, agent | F1 |
 | ssh_keys | public keys | id, user_id, fingerprint (unique), public_key, title, added_at | F1 |
 | access_tokens | API/Git tokens | id, user_id, name, token_hash, scopes, expires_at, revoked_at | F1 |
@@ -64,7 +64,7 @@ what shipped.
 | pull_request_reviews | reviews | id, pr_id, reviewer_id, verdict (approve/reject/comment), body_md, created_at | F4 |
 | releases | versioned releases | id, repo_id, tag_name, name, notes_md, author_id, published_at | F4 |
 | release_assets | artifacts | id, release_id, filename, size, sha256, storage_path | F4 |
-| webhooks | outbound hooks | id, repo_id, url, secret, events, active | F5 |
+| webhooks | outbound hooks | id, repo_id, url, secret (AES-GCM sealed with the instance secret), events, active | F5/post-F6 |
 | jobs | background work | id, kind, payload, status, run_at, finished_at | F5 |
 
 Design rules for every migration:

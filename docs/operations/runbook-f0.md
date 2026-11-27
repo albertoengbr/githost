@@ -48,7 +48,7 @@ accounts locally:
 
 ```console
 $ ./githost admin create-user --username alice --password-stdin   # first user = admin
-$ ./githost admin set-password --username alice --password-stdin  # ends all sessions
+$ ./githost admin set-password --username alice --password-stdin  # ends sessions + revokes tokens
 $ ./githost admin create-token --username alice --scope repo:read --scope repo:write
 $ ./githost admin add-ssh-key --username alice --key-file ~/.ssh/id_ed25519.pub
 $ ./githost admin list-users
@@ -192,7 +192,10 @@ work after a restore.
 Set `server.tls.enabled: true` with `cert_file`/`key_file` to serve
 HTTPS directly (certificates must be readable at startup; the server
 fails fast otherwise). With native TLS, session cookies set the Secure
-flag automatically. Reverse proxy deployments remain equally supported.
+flag automatically. Reverse proxy deployments remain equally supported:
+add the proxy's CIDR to `server.trusted_proxies` so GitHost honors
+`X-Forwarded-Proto: https` (Secure cookie + HSTS) and `X-Forwarded-For`
+(rate-limit/audit client IP). Without that list, both headers are ignored.
 
 ## Push limits (F3)
 
@@ -201,6 +204,50 @@ itself enforces it (receive.maxInputSize) on both transports and the
 HTTP layer caps the request body. Raise the limit for repositories with
 legitimately large artifacts — the value counts the **compressed**
 pack, not the file sizes.
+
+## Security hardening (post-F6)
+
+Four settings in `githost.yaml` are new. All default to the safe value:
+
+```yaml
+server:
+  trusted_proxies: []          # CIDRs of YOUR reverse proxies only
+  max_concurrent_requests: 0   # 0 = no cap; long clones hold a slot
+webhooks:
+  allowed_cidrs: []            # private targets denied unless listed
+```
+
+- **Webhooks**: the secret is mandatory (≥16 chars) and is stored AES-GCM
+  sealed with `data/secret.key`; legacy plaintext rows are sealed
+  automatically on the next start. Payloads are always signed with
+  `X-GitHost-Signature`. Private/loopback/link-local/multicast targets are
+  refused at registration and at dial time; add only the internal CIDRs you
+  control to `allowed_cidrs` (loopback stays blocked even if listed).
+  Redirects are not followed. **Back up `secret.key` with the database** —
+  without it, sealed secrets cannot be opened after a restore.
+- **Credentials**: changing or resetting a password now ends all sessions
+  *and* revokes every access token. Update any automation that expects a
+  token to survive a password reset.
+- **MFA**: a TOTP code is single-use per 30-second step; replaying the same
+  code within its validity window fails. Re-enabling MFA resets the mark.
+- **Throttling**: login/MFA guessing is limited per source IP *and* per
+  account; SSH key authentication is throttled per IP. Unknown usernames
+  cost the same Argon2 work as real ones, so login timing does not
+  enumerate accounts.
+- **Backpressure**: set `server.max_concurrent_requests` to a positive
+  value on an exposed instance; excess requests get 503 instead of
+  consuming resources. Size it for peak concurrent clones/pushes.
+- **Retention**: the runner handles `prune_audit_events` and
+  `prune_webhook_deliveries` (90 days by default, job detail = days), but
+  there is no CLI/scheduler that enqueues them yet — the same is true of
+  the older `prune_sessions`/`rotate_backups` kinds. Until that follow-up
+  lands, issue the bounded `DELETE ... WHERE created_at < ?` statements
+  yourself during maintenance; do not assume automatic scheduling.
+- **Supply chain**: CI runs `govulncheck` (currently informative) and
+  Dependabot proposes weekly Go/Action updates.
+
+The full negative-test matrix is in
+[docs/testing/security-evidence.md](../testing/security-evidence.md).
 
 ## Service manager integration
 

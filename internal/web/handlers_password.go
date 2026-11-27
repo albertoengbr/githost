@@ -91,9 +91,15 @@ func (h *Handler) passwordSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Invalidate ALL sessions for this user — security first.
+	// Invalidate ALL sessions AND tokens for this user — security first.
+	// A stolen token must not survive the credential it was issued under.
 	if err := h.deps.Store.DeleteUserSessions(r.Context(), su.User.ID); err != nil {
 		h.logger.Error("delete_sessions_failed", "err", err)
+	}
+	if n, err := h.deps.Store.RevokeAllUserTokens(r.Context(), su.User.ID); err != nil {
+		h.logger.Error("revoke_user_tokens_failed", "err", err)
+	} else if n > 0 {
+		h.logger.Info("user_tokens_revoked", "user_id", su.User.ID, "count", n)
 	}
 
 	_ = h.deps.Store.Audit(r.Context(), &su.User.ID, "auth.password_changed", su.User.Username, "web")

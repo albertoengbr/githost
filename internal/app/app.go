@@ -154,47 +154,65 @@ func Start(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*Serve
 	perms := permissions.New(metadata)
 	pulls := prservice.New(metadata, repos, executor)
 
-	// F5: event bus + webhooks + scheduled jobs.
-	eventBus := events.New(logger)
-	webhookDeliverer := webhooks.New(metadata, logger)
-	webhookDeliverer.SubscribeHooks(eventBus)
-
 	// F2: web interface prerequisites. The instance secret signs CSRF
-	// tokens; login throttling is per-process (single-instance design).
+	// tokens and seals webhook/TOTP secrets at rest; login throttling is
+	// per-process (single-instance design).
 	secret, err := InstanceSecret(cfg)
 	if err != nil {
 		db.Close()
 		releaseLock()
 		return nil, err
 	}
+	// Upgrade any legacy plaintext webhook secret. Idempotent on every
+	// startup, so a restored backup is protected before it serves traffic.
+	sealed, err := metadata.SealWebhookSecrets(ctx, secret)
+	if err != nil {
+		db.Close()
+		releaseLock()
+		return nil, fmt.Errorf("seal webhook secrets: %w", err)
+	}
+	if sealed > 0 {
+		logger.Info("webhook_secrets_sealed", "count", sealed)
+	}
+
+	// F5: event bus + webhooks + scheduled jobs.
+	eventBus := events.New(logger)
+	webhookDeliverer := webhooks.New(metadata, logger, secret, cfg.Webhooks.AllowedCIDRs...)
+	webhookDeliverer.SubscribeHooks(eventBus)
+
 	sessions := session.New(metadata, 0)
 	csrfManager := csrf.New(secret)
 	loginLimiter := ratelimit.New(5, 15*time.Minute)
+	sshLimiter := ratelimit.New(10, time.Minute)
 
 	// The job runner doubles as the periodic housekeeping hook for
-	// in-memory state (the login limiter's key map would otherwise grow
-	// without bound for the life of the process).
+	// in-memory state (limiter key maps would otherwise grow without
+	// bound for the life of the process).
 	jobRunner := jobs.New(metadata, logger)
 	jobRunner.RegisterHousekeeping(loginLimiter.Prune)
+	jobRunner.RegisterHousekeeping(sshLimiter.Prune)
 	jobRunner.Start(ctx)
 
 	var registerErr error
 	handler := httpserver.New(httpserver.Options{
-		DB:     db,
-		Logger: logger,
+		DB:                    db,
+		Logger:                logger,
+		TrustedProxies:        cfg.Server.TrustedProxies,
+		MaxConcurrentRequests: cfg.Server.MaxConcurrentRequests,
 		RegisterRoutes: func(mux *http.ServeMux) {
 			if _, err := web.Register(mux, web.Deps{
-				Store:          metadata,
-				Sessions:       sessions,
-				CSRF:           csrfManager,
-				Perms:          perms,
-				Repos:          repos,
-				Git:            executor,
-				Limiter:        loginLimiter,
-				Logger:         logger,
-				Pulls:          pulls,
-				Events:         eventBus,
-				InstanceSecret: secret,
+				Store:               metadata,
+				Sessions:            sessions,
+				CSRF:                csrfManager,
+				Perms:               perms,
+				Repos:               repos,
+				Git:                 executor,
+				Limiter:             loginLimiter,
+				Logger:              logger,
+				Pulls:               pulls,
+				Events:              eventBus,
+				InstanceSecret:      secret,
+				WebhookAllowedCIDRs: cfg.Webhooks.AllowedCIDRs,
 			}); err != nil {
 				registerErr = err
 				return
@@ -232,6 +250,7 @@ func Start(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*Serve
 
 	httpSrv := &http.Server{
 		Handler:           httpgit.Guard(handler.Handler()),
+		MaxHeaderBytes:    1 << 20, // 1 MiB; oversized headers are refused
 		ReadHeaderTimeout: 10 * time.Second,
 		// IdleTimeout reaps keep-alive connections that go quiet after
 		// the headers (slowloris-style connection exhaustion).
@@ -277,6 +296,7 @@ func Start(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*Serve
 			Logger:       logger,
 			HostKeysDir:  filepath.Join(cfg.Paths.Data, "ssh"),
 			MaxPushBytes: cfg.Limits.MaxPushBytes,
+			Limiter:      sshLimiter,
 		})
 		if err != nil {
 			db.Close()

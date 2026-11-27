@@ -207,6 +207,20 @@ func (s *Store) RevokeToken(ctx context.Context, id int64, userID int64) error {
 	return err
 }
 
+// RevokeAllUserTokens marks every still-active token of a user unusable and
+// returns how many were revoked. A password change or admin reset must call
+// this alongside DeleteUserSessions: a stolen credential must not outlive
+// the password it was issued under.
+func (s *Store) RevokeAllUserTokens(ctx context.Context, userID int64) (int64, error) {
+	res, err := s.db.ExecContext(ctx,
+		"UPDATE access_tokens SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL", nowUTC(), userID)
+	if err != nil {
+		return 0, err
+	}
+	n, _ := res.RowsAffected()
+	return n, nil
+}
+
 // ------------------------------------------------------------------- audit
 
 // Audit records a security-relevant event. Actor may be nil (anonymous).
@@ -222,6 +236,18 @@ func (s *Store) Audit(ctx context.Context, actorID *int64, action, target, detai
 		return fmt.Errorf("audit: %w", err)
 	}
 	return nil
+}
+
+// PruneAuditEvents removes audit rows older than cutoff. Security events
+// stay long enough for incident review without growing the database
+// forever on a busy instance.
+func (s *Store) PruneAuditEvents(ctx context.Context, cutoff time.Time) (int64, error) {
+	res, err := s.db.ExecContext(ctx,
+		"DELETE FROM audit_events WHERE created_at < ?", cutoff.UTC().Format(time.RFC3339))
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
 }
 
 // ----------------------------------------------------------------- sessions

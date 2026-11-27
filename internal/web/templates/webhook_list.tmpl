@@ -14,8 +14,8 @@
     <label>Payload URL
       <input name="url" value="{{.FormURL}}" placeholder="https://ci.example.com/hook" required>
     </label>
-    <label>Secret (≥ 16 chars, used for the HMAC signature; optional)
-      <input name="secret" autocomplete="off">
+    <label>Secret (≥ 16 chars, required for the HMAC signature; stored encrypted)
+      <input name="secret" autocomplete="off" minlength="16" required>
     </label>
     <fieldset>
       <legend>Events</legend>

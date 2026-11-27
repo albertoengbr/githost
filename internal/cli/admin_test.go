@@ -106,6 +106,9 @@ func TestAdminSetPassword(t *testing.T) {
 		time.Now().Add(time.Hour), "127.0.0.1", "test"); err != nil {
 		t.Fatalf("create session: %v", err)
 	}
+	if _, err := in.st.CreateToken(ctx, alice.ID, "ci", store.HashToken("token-under-test"), "tok_", "repo:read", nil); err != nil {
+		t.Fatalf("create token: %v", err)
+	}
 	in.Close()
 
 	// Username lookup is case-insensitive; the password comes from stdin.
@@ -115,7 +118,7 @@ func TestAdminSetPassword(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("set-password exit=%d: %s", code, stderr)
 	}
-	if !strings.Contains(stdout, "alice") || !strings.Contains(stdout, "sessions invalidated") {
+	if !strings.Contains(stdout, "alice") || !strings.Contains(stdout, "sessions") || !strings.Contains(stdout, "tokens") {
 		t.Fatalf("unexpected output: %q", stdout)
 	}
 
@@ -136,6 +139,13 @@ func TestAdminSetPassword(t *testing.T) {
 	}
 	if _, err := in.st.SessionByHash(ctx, "session-under-test"); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("session survived the password change: err=%v", err)
+	}
+	tok, err := in.st.TokenByHash(ctx, store.HashToken("token-under-test"))
+	if err != nil {
+		t.Fatalf("lookup token: %v", err)
+	}
+	if tok.Active() {
+		t.Fatal("token survived the password change")
 	}
 }
 

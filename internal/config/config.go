@@ -4,6 +4,7 @@ package config
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -40,6 +41,15 @@ type Config struct {
 	Logging  Logging  `yaml:"logging"`
 	Security Security `yaml:"security"`
 	Limits   Limits   `yaml:"limits"`
+	Webhooks Webhooks `yaml:"webhooks"`
+}
+
+// Webhooks configures outbound webhook delivery. AllowedCIDRs is an opt-in
+// allowlist for private/internal network targets (e.g. a self-hosted CI runner);
+// public destinations need no entry. Loopback, link-local, unspecified and
+// multicast destinations are never allowed, even when listed here.
+type Webhooks struct {
+	AllowedCIDRs []string `yaml:"allowed_cidrs"`
 }
 
 // Server holds the HTTP listener settings, the SSH transport settings
@@ -49,6 +59,13 @@ type Server struct {
 	HTTPPort int    `yaml:"http_port"`
 	SSH      SSH    `yaml:"ssh"`
 	TLS      TLS    `yaml:"tls"`
+	// TrustedProxies lists CIDRs whose X-Forwarded-For / X-Forwarded-Proto
+	// headers are believed. Empty means every peer is untrusted (headers
+	// ignored). Only reverse proxies under your control belong here.
+	TrustedProxies []string `yaml:"trusted_proxies"`
+	// MaxConcurrentRequests bounds in-flight HTTP requests; 0 disables the
+	// cap. Slow clients and long clones each occupy one slot.
+	MaxConcurrentRequests int `yaml:"max_concurrent_requests"`
 }
 
 // SSH configures the Git-over-SSH transport (F1).
@@ -246,6 +263,15 @@ func (c *Config) Validate() error {
 	if c.Limits.MaxPushBytes <= 0 {
 		return fmt.Errorf("limits.max_push_bytes: must be a positive number of bytes")
 	}
+	if err := validateCIDRs("server.trusted_proxies", c.Server.TrustedProxies); err != nil {
+		return err
+	}
+	if c.Server.MaxConcurrentRequests < 0 {
+		return fmt.Errorf("server.max_concurrent_requests: must not be negative")
+	}
+	if err := validateCIDRs("webhooks.allowed_cidrs", c.Webhooks.AllowedCIDRs); err != nil {
+		return err
+	}
 	if c.Server.TLS.Enabled {
 		if c.Server.TLS.CertFile == "" || c.Server.TLS.KeyFile == "" {
 			return fmt.Errorf("server.tls: cert_file and key_file are required when tls is enabled")
@@ -257,6 +283,15 @@ func (c *Config) Validate() error {
 func validatePort(field string, port int) error {
 	if port < 1 || port > 65535 {
 		return fmt.Errorf("%s: %d is out of range 1..65535", field, port)
+	}
+	return nil
+}
+
+func validateCIDRs(field string, values []string) error {
+	for _, value := range values {
+		if _, _, err := net.ParseCIDR(value); err != nil {
+			return fmt.Errorf("%s: %q is not a valid CIDR: %w", field, value, err)
+		}
 	}
 	return nil
 }

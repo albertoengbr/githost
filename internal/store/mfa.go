@@ -10,12 +10,29 @@ import (
 
 // --------------------------------------------------------------- MFA/TOTP
 
-// SetTOTPSecret stores the (encrypted) TOTP secret for a user.
+// SetTOTPSecret stores the (encrypted) TOTP secret for a user and clears
+// any replay high water mark: enabling (or re-enabling) MFA starts fresh.
 func (s *Store) SetTOTPSecret(ctx context.Context, userID int64, encryptedSecret string) error {
 	_, err := s.db.ExecContext(ctx,
-		"UPDATE users SET totp_secret = ?, updated_at = ? WHERE id = ?",
+		"UPDATE users SET totp_secret = ?, last_totp_step = 0, updated_at = ? WHERE id = ?",
 		encryptedSecret, nowUTC(), userID)
 	return err
+}
+
+// ClaimTOTPStep atomically consumes a TOTP time step for a user. It returns
+// true only when the step is newer than every previously claimed step, so a
+// code cannot be replayed inside its ±1-step validity window. Concurrent
+// requests cannot both claim the same step: the UPDATE is a single atomic
+// statement guarded by the stored high water mark.
+func (s *Store) ClaimTOTPStep(ctx context.Context, userID, step int64) (bool, error) {
+	res, err := s.db.ExecContext(ctx,
+		"UPDATE users SET last_totp_step = ? WHERE id = ? AND last_totp_step < ?",
+		step, userID, step)
+	if err != nil {
+		return false, err
+	}
+	n, _ := res.RowsAffected()
+	return n > 0, nil
 }
 
 // GetTOTPSecret retrieves the encrypted TOTP secret ("" when unset).

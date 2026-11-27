@@ -15,6 +15,7 @@ import (
 	"html/template"
 	"io/fs"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -54,8 +55,11 @@ type Deps struct {
 	// Events is the instance event bus (F5); nil disables event emission.
 	Events *events.Bus
 	// InstanceSecret is the instance secret from data/secret.key,
-	// used to encrypt TOTP secrets at rest.
+	// used to encrypt TOTP and webhook secrets at rest.
 	InstanceSecret string
+	// WebhookAllowedCIDRs opts specific private ranges into the webhook
+	// SSRF guard. Empty means deny all private targets.
+	WebhookAllowedCIDRs []string
 }
 
 // Handler serves the web UI.
@@ -470,13 +474,16 @@ func byteSize(n int64) string {
 	return fmt.Sprintf("%.1f %ciB", float64(n)/float64(div), "KMGTPE"[exp])
 }
 
-// clientIP extracts the remote address for rate limiting keys.
+// clientIP extracts the remote address for rate limiting keys. The
+// httpserver proxy middleware has already replaced RemoteAddr with the
+// real client address when the peer is a configured trusted proxy;
+// untrusted X-Forwarded-* values never reach this point.
 func clientIP(r *http.Request) string {
-	addr := r.RemoteAddr
-	if i := strings.LastIndex(addr, ":"); i > 0 {
-		addr = addr[:i]
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err == nil {
+		return host
 	}
-	return addr
+	return r.RemoteAddr
 }
 
 // repoRef returns the effective ref for a repository page: the query

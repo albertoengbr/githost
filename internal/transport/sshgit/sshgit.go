@@ -16,11 +16,13 @@ import (
 	"net"
 	"strconv"
 	"strings"
+	"time"
 
 	"golang.org/x/crypto/ssh"
 
 	"githost.dev/githost/internal/git"
 	"githost.dev/githost/internal/permissions"
+	"githost.dev/githost/internal/ratelimit"
 	"githost.dev/githost/internal/reposervice"
 	"githost.dev/githost/internal/store"
 )
@@ -35,6 +37,9 @@ type Deps struct {
 	HostKeysDir string
 	// MaxPushBytes caps receive-pack input (limits.max_push_bytes).
 	MaxPushBytes int64
+	// Limiter throttles authentication attempts per source address.
+	// The app wires a shared instance so housekeeping prunes its keys.
+	Limiter *ratelimit.Limiter
 }
 
 // Server is the restricted Git-over-SSH server.
@@ -49,6 +54,9 @@ type Server struct {
 func New(deps Deps) (*Server, error) {
 	if deps.Logger == nil {
 		deps.Logger = slog.Default()
+	}
+	if deps.Limiter == nil {
+		deps.Limiter = ratelimit.New(10, time.Minute)
 	}
 	signer, err := loadOrGenerateHostKey(deps.HostKeysDir)
 	if err != nil {
@@ -108,7 +116,20 @@ func (s *Server) handleConn(conn net.Conn) {
 		// Public-key authentication only: no password callback means
 		// password auth is impossible.
 		PublicKeyCallback: func(meta ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error) {
-			return s.authenticate(ctx, meta, key)
+			addr := meta.RemoteAddr().String()
+			if host, _, err := net.SplitHostPort(addr); err == nil {
+				addr = host
+			}
+			limitKey := "ssh|" + addr
+			if !s.deps.Limiter.Allow(limitKey) {
+				s.logger.Warn("ssh_auth_rate_limited", "remote", addr)
+				return nil, fmt.Errorf("too many authentication attempts")
+			}
+			perms, err := s.authenticate(ctx, meta, key)
+			if err == nil {
+				s.deps.Limiter.Reset(limitKey)
+			}
+			return perms, err
 		},
 	}
 	for _, hostKey := range s.hostKeys {

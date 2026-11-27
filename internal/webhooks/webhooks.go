@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"githost.dev/githost/internal/events"
+	"githost.dev/githost/internal/security"
 	"githost.dev/githost/internal/store"
 )
 
@@ -46,40 +47,45 @@ const (
 
 // Deliverer sends webhooks for one repository.
 type Deliverer struct {
-	store  *store.Store
-	client *http.Client
-	logger *slog.Logger
-	sem    chan struct{}
-	wg     sync.WaitGroup
+	store          *store.Store
+	client         *http.Client
+	logger         *slog.Logger
+	instanceSecret string
+	sem            chan struct{}
+	wg             sync.WaitGroup
 }
 
 // New builds a webhook deliverer. The HTTP client dials through a
-// Control hook that refuses connections to loopback, unspecified,
-// link-local and multicast addresses — a webhook URL must never become
-// an SSRF probe into the host itself. Private LAN ranges remain
-// allowed: self-hosted instances legitimately target internal CI.
-func New(st *store.Store, logger *slog.Logger) *Deliverer {
-	return newWithClient(st, logger, strictWebhookClient())
+// Control hook that refuses forbidden addresses — a webhook URL must
+// never become an SSRF probe into the host or an unapproved internal
+// network. instanceSecret opens the secrets sealed at rest. Private
+// targets are allowed only when explicitly listed in allowedCIDRs.
+func New(st *store.Store, logger *slog.Logger, instanceSecret string, allowedCIDRs ...string) *Deliverer {
+	allowed, _ := parseAllowedCIDRs(allowedCIDRs) // config.Validate rejects bad CIDRs at startup
+	return newWithClient(st, logger, strictWebhookClient(allowed), instanceSecret)
 }
 
 // newWithClient lets tests inject a permissive client: httptest
 // receivers live on loopback, which the strict dialer refuses.
-func newWithClient(st *store.Store, logger *slog.Logger, client *http.Client) *Deliverer {
+func newWithClient(st *store.Store, logger *slog.Logger, client *http.Client, instanceSecret string) *Deliverer {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	return &Deliverer{
-		store:  st,
-		client: client,
-		logger: logger,
-		sem:    make(chan struct{}, MaxConcurrentDeliveries),
+		store:          st,
+		client:         client,
+		logger:         logger,
+		instanceSecret: instanceSecret,
+		sem:            make(chan struct{}, MaxConcurrentDeliveries),
 	}
 }
 
 // strictWebhookClient builds the production client. The Control hook is
 // the dial-time authority: it sees the resolved IP, so it also defeats
-// DNS rebinding between registration and delivery.
-func strictWebhookClient() *http.Client {
+// DNS rebinding between registration and delivery. Redirects are not
+// followed — a redirect could silently move the payload to a host that
+// was never validated.
+func strictWebhookClient(allowed []*net.IPNet) *http.Client {
 	dialer := &net.Dialer{
 		Timeout: 5 * time.Second,
 		Control: func(_, address string, _ syscall.RawConn) error {
@@ -91,7 +97,7 @@ func strictWebhookClient() *http.Client {
 			if ip == nil {
 				return fmt.Errorf("webhook dial: cannot parse address %q", host)
 			}
-			if forbiddenWebhookIP(ip) {
+			if forbiddenWebhookIP(ip, allowed) {
 				return fmt.Errorf("webhook dial: address %s is a forbidden target", ip)
 			}
 			return nil
@@ -100,22 +106,82 @@ func strictWebhookClient() *http.Client {
 	return &http.Client{
 		Timeout:   DeliveryTimeout,
 		Transport: &http.Transport{DialContext: dialer.DialContext},
+		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
 	}
+}
+
+// candidateNetworks are the private/special ranges denied by default.
+// Public internet destinations are always allowed; private ones require
+// an explicit match in allowedCIDRs.
+var candidateNetworks = mustParseCIDRs(
+	"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10",
+	"fc00::/7", "fec0::/10",
+)
+
+func mustParseCIDRs(values ...string) []*net.IPNet {
+	var out []*net.IPNet
+	for _, value := range values {
+		_, n, err := net.ParseCIDR(value)
+		if err != nil {
+			panic("webhooks: bad built-in CIDR " + value)
+		}
+		out = append(out, n)
+	}
+	return out
+}
+
+func parseAllowedCIDRs(values []string) ([]*net.IPNet, error) {
+	var out []*net.IPNet
+	for _, value := range values {
+		_, n, err := net.ParseCIDR(value)
+		if err != nil {
+			return nil, fmt.Errorf("webhook allowed CIDR %q: %w", value, err)
+		}
+		out = append(out, n)
+	}
+	return out, nil
+}
+
+func inCIDRs(ip net.IP, networks []*net.IPNet) bool {
+	for _, n := range networks {
+		if n.Contains(ip) {
+			return true
+		}
+	}
+	return false
 }
 
 // forbiddenWebhookIP reports whether an address may never be a webhook
 // target. It is the dial-time authority: it sees the resolved IP, so it
-// also defeats DNS rebinding between registration and delivery.
-func forbiddenWebhookIP(ip net.IP) bool {
-	return ip.IsLoopback() || ip.IsUnspecified() ||
+// also defeats DNS rebinding between registration and delivery. Loopback,
+// link-local, unspecified, multicast and private/special ranges are
+// denied; allowedCIDRs can opt into the private ranges only.
+func forbiddenWebhookIP(ip net.IP, allowed []*net.IPNet) bool {
+	if ip == nil {
+		return true
+	}
+	if v4 := ip.To4(); v4 != nil {
+		ip = v4 // normalize IPv4-mapped IPv6 before the checks
+	}
+	if ip.IsLoopback() || ip.IsUnspecified() ||
 		ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() ||
-		ip.IsMulticast()
+		ip.IsMulticast() {
+		return true
+	}
+	return inCIDRs(ip, candidateNetworks) && !inCIDRs(ip, allowed)
 }
 
-// ValidateWebhookURL performs the cheap, registration-time half of the
-// SSRF guard (scheme, userinfo, resolvable host). The dial-time Control
-// check in New remains authoritative.
-func ValidateWebhookURL(raw string) error {
+// ValidateWebhookURL performs the registration-time half of the SSRF
+// guard: scheme, userinfo and every resolved address. The dial-time
+// Control check in strictWebhookClient remains authoritative.
+// allowedCIDRs opts specific private ranges back in (explicit config only).
+func ValidateWebhookURL(raw string, allowedCIDRs ...string) error {
+	allowed, err := parseAllowedCIDRs(allowedCIDRs)
+	if err != nil {
+		return err
+	}
 	u, err := url.Parse(raw)
 	if err != nil {
 		return fmt.Errorf("webhook url: %w", err)
@@ -129,13 +195,18 @@ func ValidateWebhookURL(raw string) error {
 	if u.User != nil {
 		return fmt.Errorf("webhook url: userinfo not allowed")
 	}
-	ips, err := net.LookupIP(u.Hostname())
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	ips, err := net.DefaultResolver.LookupIPAddr(ctx, u.Hostname())
 	if err != nil {
 		return fmt.Errorf("webhook url: cannot resolve host %q", u.Hostname())
 	}
-	for _, ip := range ips {
-		if forbiddenWebhookIP(ip) {
-			return fmt.Errorf("webhook url: host %q resolves to a forbidden address (%s)", u.Hostname(), ip)
+	if len(ips) == 0 {
+		return fmt.Errorf("webhook url: host %q has no addresses", u.Hostname())
+	}
+	for _, addr := range ips {
+		if forbiddenWebhookIP(addr.IP, allowed) {
+			return fmt.Errorf("webhook url: host %q resolves to a forbidden address (%s)", u.Hostname(), addr.IP)
 		}
 	}
 	return nil
@@ -248,8 +319,21 @@ func (d *Deliverer) deliverOne(ctx context.Context, hook *store.Webhook, event s
 		return fmt.Errorf("webhook payload too large (%d bytes)", len(payload))
 	}
 
-	// Sign the payload with the webhook secret.
-	mac := hmac.New(sha256.New, []byte(hook.Secret))
+	// Sign the payload with the webhook secret. Stored secrets are sealed
+	// with the instance secret; a hook without a signing secret is never
+	// delivered (unsigned deliveries are not supported).
+	secret := hook.Secret
+	if security.IsSealed(secret) {
+		plain, err := security.Open(secret, d.instanceSecret)
+		if err != nil {
+			return fmt.Errorf("webhook %d: open secret: %w", hook.ID, err)
+		}
+		secret = plain
+	}
+	if secret == "" {
+		return fmt.Errorf("webhook %d: no signing secret configured", hook.ID)
+	}
+	mac := hmac.New(sha256.New, []byte(secret))
 	mac.Write(payload)
 	signature := "sha256=" + hex.EncodeToString(mac.Sum(nil))
 

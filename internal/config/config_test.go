@@ -109,6 +109,9 @@ func TestValidateRejects(t *testing.T) {
 		{"bad level", func(c *Config) { c.Logging.Level = "verbose" }, "logging.level"},
 		{"bad format", func(c *Config) { c.Logging.Format = "xml" }, "logging.format"},
 		{"relative data", func(c *Config) { c.Paths.Data = "relative" }, "paths.data"},
+		{"bad trusted proxy cidr", func(c *Config) { c.Server.TrustedProxies = []string{"10.0.0.1"} }, "server.trusted_proxies"},
+		{"negative request cap", func(c *Config) { c.Server.MaxConcurrentRequests = -1 }, "server.max_concurrent_requests"},
+		{"bad webhook cidr", func(c *Config) { c.Webhooks.AllowedCIDRs = []string{"192.168.1.1"} }, "webhooks.allowed_cidrs"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

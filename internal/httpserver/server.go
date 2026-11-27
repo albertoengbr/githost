@@ -24,13 +24,19 @@ type Options struct {
 	// RegisterRoutes, when set, installs additional routes (used by the
 	// app layer to mount the Git Smart HTTP transport).
 	RegisterRoutes func(mux *http.ServeMux)
+	// TrustedProxies are CIDRs allowed to set X-Forwarded-* headers.
+	TrustedProxies []string
+	// MaxConcurrentRequests caps in-flight requests when positive.
+	MaxConcurrentRequests int
 }
 
 // Server serves the GitHost HTTP surface.
 type Server struct {
-	db     *sql.DB
-	logger *slog.Logger
-	mux    *http.ServeMux
+	db                    *sql.DB
+	logger                *slog.Logger
+	mux                   *http.ServeMux
+	trustedProxies        []string
+	maxConcurrentRequests int
 }
 
 // New builds the server and registers the routes.
@@ -39,9 +45,11 @@ func New(opts Options) *Server {
 		opts.Logger = slog.Default()
 	}
 	s := &Server{
-		db:     opts.DB,
-		logger: opts.Logger,
-		mux:    http.NewServeMux(),
+		db:                    opts.DB,
+		logger:                opts.Logger,
+		mux:                   http.NewServeMux(),
+		trustedProxies:        opts.TrustedProxies,
+		maxConcurrentRequests: opts.MaxConcurrentRequests,
 	}
 	s.mux.HandleFunc("GET /healthz", s.handleHealthz)
 	s.mux.HandleFunc("GET /version", s.handleVersion)
@@ -51,9 +59,15 @@ func New(opts Options) *Server {
 	return s
 }
 
-// Handler returns the fully middleware-wrapped HTTP handler.
+// Handler returns the fully middleware-wrapped HTTP handler. Order matters:
+// trusted proxy headers are resolved before limits/logging, recover is
+// outermost, and the concurrency cap protects the mux (not the logger).
 func (s *Server) Handler() http.Handler {
-	return recoverMiddleware(s.logger, requestLog(s.logger, s.mux))
+	var h http.Handler = s.mux
+	h = requestLog(s.logger, h)
+	h = concurrencyLimit(s.maxConcurrentRequests, h)
+	h = proxyHeaders(s.trustedProxies, h)
+	return recoverMiddleware(s.logger, h)
 }
 
 // handleHealthz reports liveness and database reachability. It is designed

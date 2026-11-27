@@ -40,6 +40,27 @@ func requestLog(logger *slog.Logger, next http.Handler) http.Handler {
 	})
 }
 
+// concurrencyLimit refuses new work with 503 when the cap is reached.
+// Long-lived clone/push requests occupy a slot for their whole lifetime;
+// operators should size the cap accordingly. 0 (or negative) disables it.
+func concurrencyLimit(max int, next http.Handler) http.Handler {
+	if max <= 0 {
+		return next
+	}
+	sem := make(chan struct{}, max)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case sem <- struct{}{}:
+			defer func() { <-sem }()
+			next.ServeHTTP(w, r)
+		default:
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{
+				"error": "server busy; retry later",
+			})
+		}
+	})
+}
+
 // recoverMiddleware converts handler panics into 500 responses and logs
 // the panic with request context. It never lets a panic kill the process.
 func recoverMiddleware(logger *slog.Logger, next http.Handler) http.Handler {

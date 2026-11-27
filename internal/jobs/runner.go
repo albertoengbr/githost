@@ -13,6 +13,8 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -122,6 +124,20 @@ func (r *Runner) tick(ctx context.Context) {
 		// Backup rotation is a no-op without a backup dir configured;
 		// the CLI enqueues it with the dir path in the detail field.
 		r.logger.Info("job_rotate_backups", "detail", job.Detail, "note", "run githost backup prune manually or via cron")
+	case "prune_webhook_deliveries":
+		days := retentionDays(job.Detail)
+		n, err := r.store.PruneWebhookDeliveries(ctx, time.Now().AddDate(0, 0, -days))
+		runErr = err
+		if err == nil {
+			r.logger.Info("job_prune_webhook_deliveries", "removed", n, "days", days)
+		}
+	case "prune_audit_events":
+		days := retentionDays(job.Detail)
+		n, err := r.store.PruneAuditEvents(ctx, time.Now().AddDate(0, 0, -days))
+		runErr = err
+		if err == nil {
+			r.logger.Info("job_prune_audit_events", "removed", n, "days", days)
+		}
 	default:
 		runErr = fmt.Errorf("unknown job kind %q", job.Kind)
 	}
@@ -134,6 +150,23 @@ func (r *Runner) tick(ctx context.Context) {
 	if runErr != nil {
 		r.logger.Error("job_failed", "kind", job.Kind, "err", runErr)
 	}
+}
+
+// retentionDays reads a job's optional retention window in days. The
+// default is 90 days; out-of-range values are clamped rather than trusted.
+func retentionDays(detail string) int {
+	const defaultDays = 90
+	if detail == "" {
+		return defaultDays
+	}
+	days, err := strconv.Atoi(strings.TrimSpace(detail))
+	if err != nil || days < 1 {
+		return defaultDays
+	}
+	if days > 3650 {
+		return 3650
+	}
+	return days
 }
 
 func errorDetail(err error) string {

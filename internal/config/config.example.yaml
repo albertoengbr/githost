@@ -21,6 +21,12 @@ server:
     enabled: false
     cert_file: ""
     key_file: ""
+  # CIDRs of reverse proxies allowed to set X-Forwarded-For and
+  # X-Forwarded-Proto. Empty means those headers are ignored (safe default).
+  trusted_proxies: []
+  # Cap on concurrent HTTP requests. 0 disables the cap; long-lived clone
+  # and push connections each occupy one slot.
+  max_concurrent_requests: 0
 
 paths:
   # Root data directory: database, secret key and (from F1) the bare Git
@@ -53,3 +59,9 @@ limits:
   # Maximum accepted pack size for pushes, in bytes (default 512 MiB).
   # Enforced by git itself (receive.maxInputSize) and by the HTTP layer.
   max_push_bytes: 536870912
+
+webhooks:
+  # Private-network webhook targets are denied by default. List only the
+  # CIDRs you explicitly trust (e.g. 10.0.0.0/8 for an internal CI runner).
+  # Loopback, link-local, unspecified and multicast targets stay blocked.
+  allowed_cidrs: []

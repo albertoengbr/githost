@@ -6,7 +6,9 @@ import (
 	"strconv"
 	"strings"
 
+	"githost.dev/githost/internal/security"
 	"githost.dev/githost/internal/store"
+	"githost.dev/githost/internal/webhooks"
 )
 
 // webhookView pairs a hook with its most recent deliveries for the page.
@@ -125,8 +127,24 @@ func (h *Handler) webhookCreate(w http.ResponseWriter, r *http.Request) {
 		renderErr("URL must be an absolute http(s) address without credentials.")
 		return
 	}
-	if len(secret) > 0 && len(secret) < 16 {
-		renderErr("Secret must be at least 16 characters (or empty to disable signing).")
+	// Registration-time SSRF guard: reject private/special targets unless
+	// the operator explicitly allowlisted them. The dial-time Control hook
+	// in internal/webhooks remains the authoritative check.
+	if err := webhooks.ValidateWebhookURL(hookURL, h.deps.WebhookAllowedCIDRs...); err != nil {
+		h.logger.Warn("webhook_url_rejected", "url", hookURL, "err", err)
+		renderErr("URL resolves to a forbidden address; private targets require an operator allowlist.")
+		return
+	}
+	// Signing is mandatory: an unsigned webhook is an unauthenticated
+	// callback and must never be registered through the UI.
+	if len(secret) < 16 {
+		renderErr("Secret must be at least 16 characters.")
+		return
+	}
+	sealed, err := security.Seal(secret, h.deps.InstanceSecret)
+	if err != nil {
+		h.logger.Error("webhook_secret_seal_failed", "err", err)
+		renderErr("Could not secure the webhook secret; try again.")
 		return
 	}
 	if len(events) == 0 {
@@ -143,7 +161,7 @@ func (h *Handler) webhookCreate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if _, err := h.deps.Store.CreateWebhook(r.Context(), rc.repo.ID,
-		hookURL, secret, strings.Join(events, ",")); err != nil {
+		hookURL, sealed, strings.Join(events, ",")); err != nil {
 		renderErr(err.Error())
 		return
 	}

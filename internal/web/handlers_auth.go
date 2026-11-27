@@ -71,9 +71,13 @@ func (h *Handler) loginSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Throttle online guessing (SEC-003).
+	// Throttle online guessing (SEC-003) both per source address and per
+	// account. The account key stops a distributed attacker from spreading
+	// guesses across IPs; the IP key stops one attacker from locking out
+	// every account from a shared NAT address.
 	key := clientIP(r) + "|" + username
-	if !h.deps.Limiter.Allow(key) {
+	accountKey := "acct|" + username
+	if !h.deps.Limiter.Allow(key) || !h.deps.Limiter.Allow(accountKey) {
 		_ = h.deps.Store.Audit(r.Context(), nil, "auth.login_rate_limited", username, "web")
 		fail(http.StatusTooManyRequests, flashText("err-rate-login"))
 		return
@@ -81,22 +85,28 @@ func (h *Handler) loginSubmit(w http.ResponseWriter, r *http.Request) {
 
 	user, err := h.deps.Store.UserByUsername(r.Context(), username)
 	if err != nil {
-		fail(http.StatusUnauthorized, flashText("err-login"))
-		return
-	}
-	ok, err := auth.VerifyPassword(password, user.PasswordHash)
-	if err != nil || !ok {
-		_ = h.deps.Store.Audit(r.Context(), nil, "auth.login_failed", username, "web")
+		auth.VerifyDummy(password) // equalize timing with a real password check
 		fail(http.StatusUnauthorized, flashText("err-login"))
 		return
 	}
 	if user.PasswordHash == "" {
 		// Account exists but has no usable password yet.
+		auth.VerifyDummy(password)
+		fail(http.StatusUnauthorized, flashText("err-login"))
+		return
+	}
+	ok, err := auth.VerifyPassword(password, user.PasswordHash)
+	if err != nil {
+		auth.VerifyDummy(password)
+	}
+	if err != nil || !ok {
+		_ = h.deps.Store.Audit(r.Context(), nil, "auth.login_failed", username, "web")
 		fail(http.StatusUnauthorized, flashText("err-login"))
 		return
 	}
 
 	h.deps.Limiter.Reset(key)
+	h.deps.Limiter.Reset(accountKey)
 
 	// MFA state must fail closed: a database error here must never skip
 	// the second factor.

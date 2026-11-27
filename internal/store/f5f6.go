@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"githost.dev/githost/internal/security"
 )
 
 // ---------------------------------------------------------------- webhooks
@@ -81,6 +83,55 @@ func (s *Store) WebhooksByRepository(ctx context.Context, repoID int64) ([]*Webh
 	return hooks, rows.Err()
 }
 
+// SealWebhookSecrets encrypts any legacy plaintext webhook secret with the
+// instance secret. It is idempotent: already-sealed values are left alone,
+// so it is safe to call on every startup. Returns the number of rows changed.
+func (s *Store) SealWebhookSecrets(ctx context.Context, instanceSecret string) (int, error) {
+	rows, err := s.db.QueryContext(ctx, "SELECT id, secret FROM webhooks")
+	if err != nil {
+		return 0, err
+	}
+	type pending struct {
+		id     int64
+		secret string
+	}
+	var todo []pending
+	for rows.Next() {
+		var p pending
+		if err := rows.Scan(&p.id, &p.secret); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		if p.secret != "" && !security.IsSealed(p.secret) {
+			todo = append(todo, p)
+		}
+	}
+	if err := rows.Close(); err != nil {
+		return 0, err
+	}
+	if len(todo) == 0 {
+		return 0, nil
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+	for _, p := range todo {
+		sealed, err := security.Seal(p.secret, instanceSecret)
+		if err != nil {
+			return 0, err
+		}
+		if _, err := tx.ExecContext(ctx, "UPDATE webhooks SET secret = ? WHERE id = ?", sealed, p.id); err != nil {
+			return 0, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return len(todo), nil
+}
+
 // DeleteWebhook removes a hook.
 func (s *Store) DeleteWebhook(ctx context.Context, repoID, hookID int64) error {
 	_, err := s.db.ExecContext(ctx,
@@ -129,6 +180,16 @@ func (s *Store) RecentDeliveries(ctx context.Context, hookID int64, limit int) (
 		deliveries = append(deliveries, &d)
 	}
 	return deliveries, rows.Err()
+}
+
+// PruneWebhookDeliveries removes delivery records older than cutoff.
+func (s *Store) PruneWebhookDeliveries(ctx context.Context, cutoff time.Time) (int64, error) {
+	res, err := s.db.ExecContext(ctx,
+		"DELETE FROM webhook_deliveries WHERE created_at < ?", cutoff.UTC().Format(time.RFC3339))
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
 }
 
 // ------------------------------------------------------------------- jobs

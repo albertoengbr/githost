@@ -308,6 +308,9 @@ func (h *Handler) adminUserSetPassword(w http.ResponseWriter, r *http.Request) {
 	if err := h.deps.Store.DeleteUserSessions(r.Context(), target.ID); err != nil {
 		h.logger.Error("admin_delete_sessions_failed", "err", err)
 	}
+	if _, err := h.deps.Store.RevokeAllUserTokens(r.Context(), target.ID); err != nil {
+		h.logger.Error("admin_revoke_user_tokens_failed", "err", err)
+	}
 	_ = h.deps.Store.Audit(r.Context(), &su.User.ID, "user.password_reset", target.Username, "web")
 	http.Redirect(w, r, back+"?msg=user-updated", http.StatusSeeOther)
 }

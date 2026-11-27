@@ -7,11 +7,11 @@ acceptance criteria pass with recorded evidence (docs/status.md).
 |---|---|---|
 | F0 | Foundation | **ACCEPTED** (see docs/testing/f0-evidence.md) |
 | F1 | Git core (repositories, Smart HTTP, SSH, auth) | **ACCEPTED** (see docs/testing/f1-evidence.md) |
-| F2 | Web UI + REST API | SPECIFIED (high level) — next |
-| F3 | Stable MVP: backup/restore, E2E, packaging, multiplatform validation | SPECIFIED (high level) |
-| F4 | Collaboration: issues, PRs, reviews, releases, wiki, LFS, MFA | SPECIFIED (high level) |
-| F5 | Integrations: webhooks, import/mirroring, schedulers, CI runners | NOT_STARTED |
-| F6 | Expansion: package registry, advanced search, extensions | NOT_STARTED |
+| F2 | Web UI + REST API | **ACCEPTED** (see docs/testing/f2-evidence.md) |
+| F3 | Stable MVP: backup/restore, E2E, packaging, multiplatform validation | **ACCEPTED** (see docs/testing/f3-evidence.md) |
+| F4 | Collaboration: issues, PRs, reviews, releases, wiki, LFS, MFA | **ACCEPTED** (wiki/LFS deferred — see docs/status.md) |
+| F5 | Integrations: webhooks, import/mirroring, schedulers, CI runners | **ACCEPTED** (CI runners deferred — see docs/status.md) |
+| F6 | Expansion: package registry, advanced search, extensions | **ACCEPTED** (see docs/testing/f5f6-evidence.md) |
 
 ## F0 — Foundation (ACCEPTED)
 
@@ -119,3 +119,18 @@ personal scale); a package registry with sha256 integrity, size caps
 (100 MiB), and per-repository versioning; and extension points — new
 event kinds and job kinds require only a constant addition to the
 respective packages.
+
+## Post-F6 — security hardening (ACCEPTED)
+
+Not a charter phase: a focused hardening pass after F0–F6. Accepted with
+evidence in [testing/security-evidence.md](testing/security-evidence.md):
+
+1. Webhook SSRF guard at registration and dial time; private targets only
+   via explicit `webhooks.allowed_cidrs`, redirects disabled.
+2. Webhook HMAC secrets sealed at rest with the instance secret; signing
+   mandatory; legacy rows upgraded idempotently at startup.
+3. Single-use TOTP steps (migration 0007) for challenge and disable flows.
+4. Password changes revoke sessions **and** tokens on all three paths.
+5. Per-account login/MFA throttling, Argon2 timing equalization for unknown
+   usernames, SSH auth throttling, opt-in trusted-proxy headers and request
+   concurrency cap, audit/delivery retention jobs, govulncheck + Dependabot.

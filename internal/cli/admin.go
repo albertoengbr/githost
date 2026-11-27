@@ -239,13 +239,18 @@ func runAdminSetPassword(ctx context.Context, args []string, stdin io.Reader, st
 		fmt.Fprintf(stderr, "githost: %v\n", err)
 		return 1
 	}
-	// A password change must end every live session of the account, so a
-	// stolen cookie cannot outlive the credential it was created with.
+	// A password change must end every live session AND revoke every token
+	// of the account: neither a stolen cookie nor a stolen token may
+	// outlive the credential they were issued under.
 	if err := in.st.DeleteUserSessions(ctx, user.ID); err != nil {
 		fmt.Fprintf(stderr, "githost: password updated, but invalidating sessions failed: %v\n", err)
 		return 1
 	}
-	fmt.Fprintf(stdout, "password updated for %s (all sessions invalidated)\n", user.Username)
+	if _, err := in.st.RevokeAllUserTokens(ctx, user.ID); err != nil {
+		fmt.Fprintf(stderr, "githost: password updated, but revoking tokens failed: %v\n", err)
+		return 1
+	}
+	fmt.Fprintf(stdout, "password updated for %s (all sessions and tokens invalidated)\n", user.Username)
 	return 0
 }
 

@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 
 	"golang.org/x/crypto/argon2"
 )
@@ -100,6 +101,31 @@ func parseArgon2Params(s string) (uint32, uint32, uint32, error) {
 		return 0, 0, 0, fmt.Errorf("auth: argon2 parameters out of accepted range")
 	}
 	return memory, timeIter, threads, nil
+}
+
+var (
+	dummyOnce sync.Once
+	dummyHash string
+)
+
+// DummyHash returns the lazily generated throwaway hash used by VerifyDummy.
+func DummyHash() string {
+	dummyOnce.Do(func() {
+		h, err := HashPassword("not-a-real-password")
+		if err != nil {
+			panic("auth: cannot generate dummy password hash: " + err.Error())
+		}
+		dummyHash = h
+	})
+	return dummyHash
+}
+
+// VerifyDummy runs one Argon2id verification against a throwaway hash.
+// Handlers call it when a lookup fails or a stored hash is unusable so an
+// unknown username costs the same CPU time as a wrong password — otherwise
+// login timing alone would enumerate accounts.
+func VerifyDummy(password string) {
+	_, _ = VerifyPassword(password, DummyHash())
 }
 
 // ValidatePasswordPolicy enforces the minimum credential quality accepted by

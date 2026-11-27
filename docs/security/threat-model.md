@@ -54,8 +54,18 @@ docs/testing/f1-evidence.md §4):
 | T7 | **Resource exhaustion** via giant pushes/fetches | **IMPLEMENTED+TESTED**: hard timeout on every git invocation plus configurable receive.maxInputSize (limits.max_push_bytes, default 512 MiB) enforced by git and the HTTP layer; connection caps remain future work |
 | T8 | **Environment injection** to git subprocess | IMPLEMENTED+TESTED: environment rebuilt from an allowlist, GIT_CONFIG_NOSYSTEM/GIT_CONFIG_GLOBAL neutralization (host-config leak unit-tested), GIT_PROTOCOL allowlisted with value validation, `-c` settings strictly validated |
 
-Remaining gaps tracked in docs/status.md limitations (TLS native support,
-payload limits, race-detector runs on POSIX CI).
+The F3/F5 hardening closed the earlier operational gaps: native TLS,
+push-size limits and the race-detector CI job all exist. The remaining
+gaps are tracked in docs/status.md and in the post-F6 section below.
+
+## STRIDE — post-F6 security hardening (T9–T12)
+
+| # | Threat | Mitigation (status) |
+|---|---|---|
+| T9 | **SSRF via webhook URL** (internal port scan / cloud metadata probe through delivery status) | IMPLEMENTED+TESTED: registration-time resolution rejects loopback, unspecified, link-local, multicast, RFC1918, CGNAT and IPv6 ULA targets; dial-time `Control` sees the resolved IP (defeats DNS rebinding); private targets require an explicit `webhooks.allowed_cidrs` entry and loopback stays blocked even if listed; redirects are not followed. Negative tests in `internal/webhooks` and `internal/web`. |
+| T10 | **Secret theft from a database leak** (webhook HMAC keys) | IMPLEMENTED+TESTED: webhook secrets are AES-GCM sealed with the instance secret (`ghs1:` prefix), migrated in place on startup, and signing is mandatory — unsigned hooks are never delivered. Recovery codes/tokens stay hash-only, TOTP seeds stay encrypted. Tests in `internal/security`, `internal/store` and `internal/webhooks`. |
+| T11 | **TOTP code replay** inside the ±1-step window | IMPLEMENTED+TESTED: the challenge and disable flows atomically claim the current 30-second step (`users.last_totp_step`, migration 0007); a second use of the same step fails, re-enabling MFA resets the mark. Tests in `internal/store` and `internal/web`. |
+| T12 | **Credential/token survival after password reset** and **account enumeration / distributed guessing** | IMPLEMENTED+TESTED: all three password-change paths revoke every access token alongside every session; login/MFA rate limits now also key by account; unknown users pay the same Argon2 cost via `auth.VerifyDummy`; SSH authentication attempts are throttled per source IP. Tests in `internal/store`, `internal/cli`, `internal/auth`, `internal/web` and `internal/httpserver`. |
 
 ## Security requirements mapping
 
@@ -64,11 +74,25 @@ above is: SEC-007/008 → T1/T2; SEC-005 → T3; SEC-004 → T4/T6;
 SEC-009 → T5; SEC-003 → T6/T7. SEC-010 (release-blocking rule) applies
 to any of T1–T8 found unresolved at a release gate.
 
-## Residual risk (accepted for F0)
+## Residual risk (current)
 
-- No TLS termination inside GitHost yet (personal deployments behind a
-  reverse proxy are the documented model; native TLS is an F3 task).
-- No audit event log yet (table designed, writer arrives with auth in F1).
-- Race detector not exercised on the current Windows host (no C
-  toolchain); CI must run `scripts/verify.sh` on POSIX (tracked in
-  status.md limitations).
+- Rate-limit counters are in-process and reset on restart. This is honest
+  for a single-binary, single-instance design; a clustered deployment
+  would need a shared limiter.
+- `server.trusted_proxies` is empty by default: X-Forwarded-* headers are
+  ignored until an operator lists their own reverse proxy. Misconfiguring
+  that list (trusting an untrusted peer) hands that peer control of the
+  client IP used by rate limiting and cookies.
+- Webhook targets on private networks are denied unless explicitly
+  allowlisted; the allowlist is an operator decision, not a discovery
+  mechanism. Loopback/link-local/multicast stay denied unconditionally.
+- `server.max_concurrent_requests` defaults to 0 (off): the 503 backpressure
+  guard is opt-in because long-lived clones occupy slots. Operators
+  exposed to untrusted networks should set it.
+- TOTP derivation uses domain-separated SHA-256 rather than HKDF to keep
+  seeds encrypted by older versions readable; the instance secret has
+  256 bits of entropy, so this remains sound.
+- `go test -race` runs on POSIX CI runners but a live runner execution is
+  still pending; the Windows dev host has no C toolchain.
+- No first-party Windows SCM handler, and netbsd/arm64 remains unsupported
+  (dependency limitation) — both are operational, not security, gaps.

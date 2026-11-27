@@ -1,8 +1,10 @@
 // Package totp implements TOTP (RFC 6238) for GitHost's MFA.
 //
 // Secrets are encrypted with the instance secret before storage — a
-// database leak alone does not compromise TOTP seeds. The encryption
-// uses AES-GCM with a key derived from the instance secret via HKDF.
+// database leak alone does not compromise TOTP seeds. The encryption uses
+// AES-GCM with a domain-separated SHA-256 key derived from the high-entropy
+// instance secret. This derivation predates HKDF in GitHost and is kept for
+// backward compatibility with seeds already stored by existing instances.
 package totp
 
 import (
@@ -83,6 +85,13 @@ func Generate(account, issuer string) (secret, otpauthURL string, err error) {
 		return "", "", fmt.Errorf("totp generate: %w", err)
 	}
 	return key.Secret(), key.URL(), nil
+}
+
+// CurrentStep returns the 30-second TOTP time step for now. Handlers claim
+// this step (not the step matched by the code) before accepting a code: a
+// replay of the same value inside the ±1 window must be rejected.
+func CurrentStep() int64 {
+	return time.Now().Unix() / 30
 }
 
 // Verify checks a TOTP code with a ±1 step window.

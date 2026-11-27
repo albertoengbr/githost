@@ -117,7 +117,7 @@ func TestWebhookPagesAndCreate(t *testing.T) {
 	// Short secrets are rejected (the HMAC needs entropy).
 	short := url.Values{}
 	short.Set("csrf", csrfTokenFromHTML(t, page))
-	short.Set("url", "https://example.invalid/hook")
+	short.Set("url", "https://8.8.8.8/hook")
 	short.Set("secret", "abc")
 	short["events"] = []string{"push"}
 	r = h.postForm("/alice/hooked/settings/webhooks/create", short)
@@ -127,10 +127,24 @@ func TestWebhookPagesAndCreate(t *testing.T) {
 		t.Fatalf("short secret: status %d body=%s", r.StatusCode, body)
 	}
 
+	// Private/special targets are rejected by the registration-time SSRF
+	// guard even when they look like a perfectly valid http(s) URL.
+	private := url.Values{}
+	private.Set("csrf", csrfTokenFromHTML(t, page))
+	private.Set("url", "http://10.0.0.5:8080/hook")
+	private.Set("secret", "0123456789abcdef0123")
+	private["events"] = []string{"push"}
+	r = h.postForm("/alice/hooked/settings/webhooks/create", private)
+	body, _ = io.ReadAll(r.Body)
+	r.Body.Close()
+	if r.StatusCode != http.StatusBadRequest || !strings.Contains(string(body), "forbidden address") {
+		t.Fatalf("private webhook URL: status %d body=%s", r.StatusCode, body)
+	}
+
 	// A valid hook is accepted and listed.
 	good := url.Values{}
 	good.Set("csrf", csrfTokenFromHTML(t, page))
-	good.Set("url", "https://example.invalid/hook")
+	good.Set("url", "https://8.8.8.8/hook")
 	good.Set("secret", "0123456789abcdef0123")
 	good["events"] = []string{"push", "issues"}
 	r = h.postForm("/alice/hooked/settings/webhooks/create", good)
@@ -139,7 +153,7 @@ func TestWebhookPagesAndCreate(t *testing.T) {
 		t.Fatalf("create webhook status = %d", r.StatusCode)
 	}
 	page = h.get("/alice/hooked/settings/webhooks")
-	if !strings.Contains(page, "example.invalid/hook") || !strings.Contains(page, "push,issues") {
+	if !strings.Contains(page, "8.8.8.8/hook") || !strings.Contains(page, "push,issues") {
 		t.Fatal("webhook not listed after creation")
 	}
 

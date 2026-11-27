@@ -2,10 +2,14 @@ package store
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"githost.dev/githost/internal/database"
+	"githost.dev/githost/internal/security"
 	"githost.dev/githost/migrations"
 )
 
@@ -51,6 +55,180 @@ func TestUserCRUD(t *testing.T) {
 	}
 	if n, err := s.CountUsers(ctx); err != nil || n != 1 {
 		t.Fatalf("CountUsers = %d, %v", n, err)
+	}
+}
+
+func TestPruneAuditAndWebhookDeliveries(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	cutoff := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	db := s.DB()
+	for _, created := range []string{"2000-01-01T00:00:00Z", "2030-01-01T00:00:00Z"} {
+		if _, err := db.ExecContext(ctx,
+			"INSERT INTO audit_events (actor_id, action, target, detail, created_at) VALUES (NULL, 'test', '', '', ?)", created); err != nil {
+			t.Fatal(err)
+		}
+	}
+	n, err := s.PruneAuditEvents(ctx, cutoff)
+	if err != nil || n != 1 {
+		t.Fatalf("PruneAuditEvents = %d, %v; want 1", n, err)
+	}
+
+	alice, err := s.CreateUser(ctx, "alice", "", "hash", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo, err := s.CreateRepository(ctx, alice.ID, "0123456789abcdef0123456789abcdef", "proj", "", VisibilityPrivate, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	hook, err := s.CreateWebhook(ctx, repo.ID, "https://ci.example.test/hook", "long-enough-secret", "push")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, created := range []string{"2000-01-01T00:00:00Z", "2030-01-01T00:00:00Z"} {
+		if _, err := db.ExecContext(ctx,
+			`INSERT INTO webhook_deliveries (webhook_id, event, payload, status_code, success, created_at)
+			 VALUES (?, 'push', '{}', 200, 1, ?)`, hook.ID, created); err != nil {
+			t.Fatal(err)
+		}
+	}
+	n, err = s.PruneWebhookDeliveries(ctx, cutoff)
+	if err != nil || n != 1 {
+		t.Fatalf("PruneWebhookDeliveries = %d, %v; want 1", n, err)
+	}
+	remaining, err := s.RecentDeliveries(ctx, hook.ID, 10)
+	if err != nil || len(remaining) != 1 {
+		t.Fatalf("remaining deliveries = %v, %v; want 1", remaining, err)
+	}
+	if remaining[0].CreatedAt.Before(cutoff) {
+		t.Fatal("old delivery survived pruning")
+	}
+}
+
+func TestClaimTOTPStep(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	u, err := s.CreateUser(ctx, "alice", "", "hash", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ok, err := s.ClaimTOTPStep(ctx, u.ID, 1000)
+	if err != nil || !ok {
+		t.Fatalf("first claim = %v, %v; want true", ok, err)
+	}
+	ok, err = s.ClaimTOTPStep(ctx, u.ID, 1000)
+	if err != nil || ok {
+		t.Fatalf("replayed claim = %v, %v; want false", ok, err)
+	}
+	ok, err = s.ClaimTOTPStep(ctx, u.ID, 999)
+	if err != nil || ok {
+		t.Fatalf("older claim = %v, %v; want false", ok, err)
+	}
+	ok, err = s.ClaimTOTPStep(ctx, u.ID, 1001)
+	if err != nil || !ok {
+		t.Fatalf("newer claim = %v, %v; want true", ok, err)
+	}
+	// Re-enabling MFA clears the high water mark.
+	if err := s.SetTOTPSecret(ctx, u.ID, "sealed"); err != nil {
+		t.Fatal(err)
+	}
+	ok, err = s.ClaimTOTPStep(ctx, u.ID, 1001)
+	if err != nil || !ok {
+		t.Fatalf("claim after reset = %v, %v; want true", ok, err)
+	}
+}
+
+func TestSealWebhookSecrets(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	secret := "0123456789abcdef0123456789abcdef"
+
+	alice, err := s.CreateUser(ctx, "alice", "", "hash", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo, err := s.CreateRepository(ctx, alice.ID, "0123456789abcdef0123456789abcdef", "proj", "", VisibilityPrivate, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	hook, err := s.CreateWebhook(ctx, repo.ID, "https://ci.example.test/hook", "legacy-plaintext-secret", "push")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	n, err := s.SealWebhookSecrets(ctx, secret)
+	if err != nil || n != 1 {
+		t.Fatalf("SealWebhookSecrets = %d, %v; want 1", n, err)
+	}
+	// Idempotent: the second pass must not reseal an already-sealed value.
+	n, err = s.SealWebhookSecrets(ctx, secret)
+	if err != nil || n != 0 {
+		t.Fatalf("second SealWebhookSecrets = %d, %v; want 0", n, err)
+	}
+
+	hooks, err := s.WebhooksByRepository(ctx, repo.ID)
+	if err != nil || len(hooks) != 1 {
+		t.Fatalf("WebhooksByRepository = %v, %v", hooks, err)
+	}
+	if !security.IsSealed(hooks[0].Secret) || strings.Contains(hooks[0].Secret, "legacy-plaintext") {
+		t.Fatalf("stored secret is not sealed: %q", hooks[0].Secret)
+	}
+	plain, err := security.Open(hooks[0].Secret, secret)
+	if err != nil || plain != "legacy-plaintext-secret" {
+		t.Fatalf("sealed secret does not open: %q, %v", plain, err)
+	}
+	_ = hook
+}
+
+func TestRevokeAllUserTokens(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	alice, err := s.CreateUser(ctx, "alice", "", "hash", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bob, err := s.CreateUser(ctx, "bob", "", "hash", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, user := range []*User{alice, alice, bob} {
+		name := fmt.Sprintf("token-%s-%d", user.Username, i)
+		if _, err := s.CreateToken(ctx, user.ID, "ci", HashToken(name), "tok_", "repo:read", nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	n, err := s.RevokeAllUserTokens(ctx, alice.ID)
+	if err != nil || n != 2 {
+		t.Fatalf("RevokeAllUserTokens = %d, %v; want 2", n, err)
+	}
+	// Idempotent: a second call must not touch already-revoked rows.
+	n, err = s.RevokeAllUserTokens(ctx, alice.ID)
+	if err != nil || n != 0 {
+		t.Fatalf("second RevokeAllUserTokens = %d, %v; want 0", n, err)
+	}
+
+	aliceTokens, err := s.TokensByUser(ctx, alice.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tok := range aliceTokens {
+		if tok.Active() {
+			t.Fatalf("alice token %d still active after password reset", tok.ID)
+		}
+	}
+	bobTokens, err := s.TokensByUser(ctx, bob.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tok := range bobTokens {
+		if !tok.Active() {
+			t.Fatalf("bob token %d was revoked by alice's reset", tok.ID)
+		}
 	}
 }
 

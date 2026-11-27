@@ -25,7 +25,7 @@ func TestCIWorkflowParses(t *testing.T) {
 	if !ok {
 		t.Fatal("ci.yml has no jobs")
 	}
-	for _, want := range []string{"test", "cross", "package"} {
+	for _, want := range []string{"test", "vuln", "cross", "package"} {
 		if _, ok := jobs[want]; !ok {
 			t.Errorf("ci.yml lacks job %q", want)
 		}

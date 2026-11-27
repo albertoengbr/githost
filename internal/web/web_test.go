@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -40,11 +41,13 @@ import (
 type harness struct {
 	t       *testing.T
 	server  *httptest.Server
+	handler http.Handler
 	client  *http.Client
 	st      *store.Store
 	svc     *reposervice.Service
 	gitx    *git.Executor
 	repoDir string
+	secret  string
 	users   map[string]*store.User
 }
 
@@ -87,14 +90,15 @@ func newHarness(t *testing.T) *harness {
 
 	mux := http.NewServeMux()
 	_, err = Register(mux, Deps{
-		Store:    st,
-		Sessions: session.New(st, time.Hour),
-		CSRF:     csrf.New(secret),
-		Perms:    permissions.New(st),
-		Repos:    svc,
-		Git:      executor,
-		Limiter:  ratelimit.New(5, time.Minute),
-		Logger:   slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Store:          st,
+		Sessions:       session.New(st, time.Hour),
+		CSRF:           csrf.New(secret),
+		Perms:          permissions.New(st),
+		Repos:          svc,
+		Git:            executor,
+		Limiter:        ratelimit.New(5, time.Minute),
+		Logger:         slog.New(slog.NewTextHandler(io.Discard, nil)),
+		InstanceSecret: secret,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -108,8 +112,9 @@ func newHarness(t *testing.T) *harness {
 	t.Cleanup(server.Close)
 
 	return &harness{
-		t:      t,
-		server: server,
+		t:       t,
+		server:  server,
+		handler: mux,
 		client: &http.Client{Jar: jar, CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			return http.ErrUseLastResponse // follow manually for assertions
 		}},
@@ -117,6 +122,7 @@ func newHarness(t *testing.T) *harness {
 		svc:     svc,
 		gitx:    executor,
 		repoDir: repoDir,
+		secret:  secret,
 		users:   make(map[string]*store.User),
 	}
 }
@@ -303,6 +309,44 @@ func TestLoginRateLimit(t *testing.T) {
 	}
 	if code := h.login("bob", "correct-password-2"); code != http.StatusTooManyRequests {
 		t.Fatalf("rate-limited login status = %d, want 429", code)
+	}
+}
+
+// TestLoginAccountRateLimitAcrossAddresses proves the per-account limiter
+// cannot be bypassed by spreading guesses over different source addresses.
+func TestLoginAccountRateLimitAcrossAddresses(t *testing.T) {
+	h := newHarness(t)
+	h.createUser("carol", "correct-password-9")
+
+	attempt := func(i int) int {
+		t.Helper()
+		addr := fmt.Sprintf("192.0.2.%d:1234", 10+i)
+		rec := httptest.NewRecorder()
+		pageReq := httptest.NewRequest(http.MethodGet, "/login", nil)
+		pageReq.RemoteAddr = addr
+		h.handler.ServeHTTP(rec, pageReq)
+		visitor := rec.Header().Get("Set-Cookie")
+		form := url.Values{}
+		form.Set("csrf", csrfTokenFromHTML(t, rec.Body.String()))
+		form.Set("username", "carol")
+		form.Set("password", "wrong-password")
+		req := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("Cookie", visitor)
+		req.RemoteAddr = addr
+		postRec := httptest.NewRecorder()
+		h.handler.ServeHTTP(postRec, req)
+		return postRec.Code
+	}
+
+	for i := 0; i < 5; i++ {
+		if code := attempt(i); code != http.StatusUnauthorized {
+			t.Fatalf("attempt %d: status %d, want 401", i, code)
+		}
+	}
+	// A brand-new address still hits the exhausted account budget.
+	if code := attempt(100); code != http.StatusTooManyRequests {
+		t.Fatalf("status = %d, want 429 from the per-account limiter", code)
 	}
 }
 
